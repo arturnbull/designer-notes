@@ -47,8 +47,12 @@ If multiple HTML files found, list them and ask which one(s) to set up. Accept "
 
 For each target file:
 - Check if `designer-notes.js` is already referenced. If yes, skip and report "already set up."
-- Compute the relative path from the HTML file's location to `~/.claude/skills/designer-notes/designer-notes.js`.
-- Insert `<script src="[relative-path]"></script>` just before the closing `</body>` tag.
+- Create a symlink to `designer-notes.js` in the project root (if one doesn't already exist):
+  ```bash
+  ln -sf ~/.claude/skills/designer-notes/designer-notes.js [project-directory]/designer-notes.js
+  ```
+- Insert `<script src="designer-notes.js"></script>` just before the closing `</body>` tag.
+- If the project has a `.gitignore`, add `designer-notes.js` to it (so the symlink isn't committed).
 - Report what was added.
 
 ## Step 3: Generate dn-config.json
