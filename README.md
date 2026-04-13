@@ -29,7 +29,18 @@ Every comment is saved with its CSS selector and click position into a structure
 - **Batch reviews** — leave all your notes first, submit once
 - **Slash commands** — add `/bolder` or `/arrange` to invoke skills on specific elements
 - **Model directives** — use `#opus`, `#sonnet`, or `#haiku` per comment
+- **Effort directives** — use `#high-effort`, `#medium-effort`, or `#low-effort`
 - **Auto-save** — comments persist and export to markdown automatically
+- **Viewport tracking** — feedback includes window size so changes target the right breakpoint
+- **Changelog** — cumulative HTML changelog generated after each feedback round
+
+### Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `C` | Toggle comment mode |
+| `⌘\` | Open / close panel |
+| `⌘.` | Show / hide all UI |
 
 ## Manual install
 
@@ -43,6 +54,8 @@ curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/desi
   -o ~/.claude/skills/designer-notes/designer-notes.js
 curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/serve.js \
   -o ~/.claude/skills/designer-notes/serve.js
+curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/changelog-template.html \
+  -o ~/.claude/skills/designer-notes/changelog-template.html
 
 # Skill files
 curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/skills/designer-notes/SKILL.md \
@@ -55,12 +68,13 @@ Then restart Claude Code.
 
 ## How it works
 
-1. `/designer-notes` adds a `<script>` tag to your HTML and starts a local dev server (port 3847)
-2. Press **C** in the browser to enter comment mode — click elements to place numbered pins
-3. Type your feedback in the popover. Use `/skills` and `#directives` for advanced control
-4. Comments auto-save to `feedback-YYYY-MM-DD.md` in your project directory
-5. `/submit-feedback` parses the markdown, locates each element in source, and applies changes
-6. After changes are applied, the browser clears automatically for the next review round
+1. `/designer-notes` adds a `<script>` tag to your HTML and starts a local dev server
+2. The server auto-finds an open port (defaults to 3847, increments if in use)
+3. Press **C** in the browser to enter comment mode — click elements to place numbered pins
+4. Type your feedback in the popover. Use `/skills` and `#directives` for advanced control
+5. Comments auto-save to `feedback-YYYY-MM-DD.md` in your project directory
+6. `/submit-feedback` parses the markdown, locates each element in source, and applies changes
+7. After changes are applied, the browser clears automatically for the next review round
 
 ## Requirements
 
