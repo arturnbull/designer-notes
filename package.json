@@ -1,6 +1,6 @@
 {
   "name": "designer-notes",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Figma-style feedback commenting for AI-generated UI. Claude Code skills for pinning notes to HTML elements and applying changes.",
   "bin": {
     "designer-notes": "bin/cli.js"

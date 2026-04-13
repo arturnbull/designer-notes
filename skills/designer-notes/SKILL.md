@@ -95,12 +95,19 @@ Scan for available skills and write a config file to the project directory:
 
 ## Step 4: Start the dev server
 
-Run the dev server in the background:
+First check if a designer-notes server is already running for this project:
+```bash
+curl -s http://localhost:3847/server-info 2>/dev/null
+```
+If it returns a response with the correct `projectPath`, use that server. If not, start a new one:
+
 ```bash
 node ~/.claude/skills/designer-notes/serve.js [project-directory] &
 ```
 
-The server runs on `http://localhost:3847` and:
+The server defaults to port 3847 but auto-increments if that port is in use (tries up to 10 ports). Read the server output to see which port it chose.
+
+The server:
 - Serves the project's HTML files
 - Accepts POST `/save-feedback` to write feedback markdown to the project folder
 - Serves GET `/config` with the skills list from `dn-config.json`
@@ -108,7 +115,7 @@ The server runs on `http://localhost:3847` and:
 
 ## Step 5: Open in browser
 
-Open at `http://localhost:3847/[filename.html]` (NOT as a file:// URL — the server is required for saving feedback).
+Open at `http://localhost:[port]/[filename.html]` using the port from the server output (NOT as a file:// URL — the server is required for saving feedback).
 
 ## Step 6: Report the setup
 

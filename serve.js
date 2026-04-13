@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const projectPath = process.argv[2] || process.cwd();
-const port = parseInt(process.argv[3]) || 3847;
+const preferredPort = parseInt(process.argv[3]) || 3847;
 let clearSignal = false;
 
 const MIME = {
@@ -219,8 +219,21 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(port, () => {
-  console.log(`\n  \x1b[1mdesigner-notes server\x1b[0m`);
-  console.log(`  Local:    \x1b[36mhttp://localhost:${port}\x1b[0m`);
-  console.log(`  Feedback: \x1b[33m${projectPath}\x1b[0m\n`);
-});
+function tryListen(port, maxAttempts) {
+  server.listen(port, () => {
+    console.log(`\n  \x1b[1mdesigner-notes server\x1b[0m`);
+    console.log(`  Local:    \x1b[36mhttp://localhost:${port}\x1b[0m`);
+    console.log(`  Feedback: \x1b[33m${projectPath}\x1b[0m\n`);
+  });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && maxAttempts > 1) {
+      console.log(`  Port ${port} in use, trying ${port + 1}...`);
+      server.removeAllListeners('error');
+      tryListen(port + 1, maxAttempts - 1);
+    } else {
+      console.error(`  Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+}
+tryListen(preferredPort, 10);
