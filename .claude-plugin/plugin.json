@@ -1,0 +1,21 @@
+{
+  "name": "designer-notes",
+  "version": "1.1.0",
+  "description": "Figma-style feedback commenting for AI-generated UI. Pin comments to HTML elements in the browser, then hand off structured feedback to Claude Code for implementation.",
+  "author": {
+    "name": "Andrew Turnbull",
+    "url": "https://www.andrew-turnbull.com"
+  },
+  "homepage": "https://arturnbull.github.io/designer-notes-landing-page/",
+  "repository": "https://github.com/arturnbull/designer-notes",
+  "license": "MIT",
+  "keywords": [
+    "design-feedback",
+    "ui-review",
+    "commenting",
+    "figma",
+    "claude-code",
+    "frontend",
+    "ai"
+  ]
+}
