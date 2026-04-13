@@ -10,6 +10,11 @@ npx designer-notes
 
 This installs two Claude Code skills and the tool files to `~/.claude/skills/`.
 
+To update to the latest version:
+```bash
+npx designer-notes@latest --force
+```
+
 ## Quick start
 
 1. Open Claude Code in any project with HTML files
@@ -39,9 +44,8 @@ Every comment is saved with its CSS selector and click position into a structure
 | Key | Action |
 |-----|--------|
 | `C` | Toggle comment mode |
-| `⌘\` | Open / close panel |
+| `⌘\` | Open / close sidepanel |
 | `⌘.` | Show / hide all UI |
-| `⌘\` | Show / hide sidepanel |
 
 ## Manual install
 
@@ -82,6 +86,18 @@ Then restart Claude Code.
 - [Claude Code](https://claude.ai/code)
 - Node.js 14+ (for the dev server)
 - Any modern browser
+
+## Uninstall
+
+```bash
+rm -rf ~/.claude/skills/designer-notes ~/.claude/skills/submit-feedback
+```
+
+## Links
+
+- [Landing page](https://arturnbull.github.io/designer-notes-landing-page/)
+- [GitHub](https://github.com/arturnbull/designer-notes)
+- [npm](https://www.npmjs.com/package/designer-notes)
 
 ## License
 
