@@ -1982,7 +1982,9 @@
   function generateMarkdown() {
     var dateStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
     var all = state.comments;
-    var md = '# UI Feedback\nGenerated: ' + dateStr + '\nTotal comments: ' + all.length + '\n\n---\n';
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var md = '# UI Feedback\nGenerated: ' + dateStr + '\nTotal comments: ' + all.length + '\nViewport: ' + vw + 'x' + vh + '\n\n---\n';
 
     var pages = {};
     all.forEach(function (c) { if (!pages[c.page]) pages[c.page] = []; pages[c.page].push(c); });
