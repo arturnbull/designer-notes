@@ -72,12 +72,11 @@ Read structured UI feedback exported by designer-notes.js and make targeted revi
    For each row: the original comment text (including any skill invocations and directives), which model processed it (default to current model if no `#model` directive), a plain-language description of the change, and the file + approximate line number.
 
 10. **Write changelog HTML.** Before archiving, update the cumulative `.designer-notes/changelog.html` file. Create the `.designer-notes/` directory if it doesn't exist. This is an append-to-top file — each round adds a new section.
-    - If the file exists, read it and extract the existing `<section>` elements from inside `<main>`
-    - Create a new `<section>` for this round with an `<h2>` heading (timestamp) and a simple table (columns: #, Comment, What Changed, File)
+    - **Template:** Read `~/.claude/skills/designer-notes/changelog-template.html` for the HTML shell (styles, layout, filter bar). If the template exists, use it as the wrapper — replace the `<!-- SECTIONS -->` comment with the section elements. This ensures consistent styling across sessions. If the template doesn't exist, create a minimal HTML page with system font stack, light background, centered 720px max-width layout, and a filter input.
+    - If the changelog file already exists, read it and extract the existing `<section>` elements from inside `<main>`
+    - Create a new `<section>` for this round with an `<h2>` heading (timestamp) and a simple table (columns: #, Comment, What Changed, File). Each table row cell for File should have `class="file"`.
     - Prepend the new section before existing sections
     - Write the complete HTML file with all sections
-    - Include a simple filter bar at the top that lets users filter by date (text search across headings)
-    - **Design:** Clean, minimal, light background. System font stack. No dark theme, no heavy styling. Think plain HTML with just enough CSS to be readable — like a GitHub markdown render. The point is utility, not aesthetics.
 
 11. **Archive feedback.** After all changes are applied:
     - Send a POST request to the dev server to archive the feedback file:

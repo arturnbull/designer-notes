@@ -12,7 +12,7 @@ var TOOLS_SOURCE = path.join(__dirname, '..');
 var CLAUDE_DIR = path.join(os.homedir(), '.claude');
 var SKILLS_DEST = path.join(CLAUDE_DIR, 'skills');
 
-var TOOL_FILES = ['designer-notes.js', 'serve.js'];
+var TOOL_FILES = ['designer-notes.js', 'serve.js', 'changelog-template.html'];
 var SKILL_DIRS = ['designer-notes', 'submit-feedback'];
 
 // ── Parse args ──────────────────────────────────────────────

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Changelog</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 14px; line-height: 1.6; color: #1a1a2e; background: #f8fafc; margin: 0; padding: 0; }
+    .header { max-width: 720px; margin: 0 auto; padding: 24px 32px; }
+    .header h1 { font-size: 18px; font-weight: 600; margin: 0; }
+    .filter-bar { border-bottom: 1px solid #e2e8f0; background: #fff; }
+    .filter-bar-inner { max-width: 720px; margin: 0 auto; padding: 12px 32px; }
+    .filter-bar input { width: 100%; max-width: 320px; padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; font-family: inherit; }
+    main { max-width: 720px; margin: 0 auto; padding: 24px 32px; }
+    section { margin-bottom: 32px; }
+    h2 { font-size: 14px; font-weight: 600; color: #64748b; margin: 0 0 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+    th:nth-child(1), td:nth-child(1) { width: 32px; }
+    th:nth-child(2), td:nth-child(2) { width: 40%; }
+    th:nth-child(3), td:nth-child(3) { width: auto; }
+    th:nth-child(4), td:nth-child(4) { width: 90px; }
+    th { text-align: left; padding: 6px 8px; font-weight: 600; color: #64748b; border-bottom: 2px solid #e2e8f0; }
+    td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: top; word-wrap: break-word; }
+    tr:hover td { background: #f1f5f9; }
+    .file { font-family: monospace; font-size: 12px; color: #64748b; }
+    @media (max-width: 600px) {
+      .header, .filter-bar-inner, main { padding-left: 16px; padding-right: 16px; }
+      th:nth-child(4), td:nth-child(4) { display: none; }
+      th:nth-child(2), td:nth-child(2) { width: 50%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header"><h1>Changelog</h1></div>
+  <div class="filter-bar"><div class="filter-bar-inner"><input type="text" placeholder="Filter by date or keyword..." id="filter"></div></div>
+  <main>
+<!-- SECTIONS -->
+  </main>
+  <script>
+    document.getElementById('filter').addEventListener('input', function(e) {
+      var q = e.target.value.toLowerCase();
+      document.querySelectorAll('main section').forEach(function(s) {
+        s.style.display = s.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>
