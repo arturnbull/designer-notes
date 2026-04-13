@@ -51,8 +51,12 @@ For each target file:
   ```bash
   ln -sf ~/.claude/skills/designer-notes/designer-notes.js [project-directory]/designer-notes.js
   ```
-- Insert `<script src="designer-notes.js"></script>` just before the closing `</body>` tag.
-- If the project has a `.gitignore`, add `designer-notes.js` to it (so the symlink isn't committed).
+  If the symlink fails (e.g., Windows or unsupported filesystem), copy the file instead:
+  ```bash
+  cp ~/.claude/skills/designer-notes/designer-notes.js [project-directory]/designer-notes.js
+  ```
+- Insert `<script src="designer-notes.js"></script>` just before the closing `</body>` tag. If the file has no `</body>` tag, insert before `</html>` or append to the end of the file.
+- If the project has a `.gitignore`, add `designer-notes.js` to it (so the symlink/copy isn't committed).
 - Report what was added.
 
 ## Step 3: Generate dn-config.json

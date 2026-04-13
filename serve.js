@@ -24,6 +24,11 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.md': 'text/markdown',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
 };
 
 const server = http.createServer((req, res) => {
@@ -47,7 +52,13 @@ const server = http.createServer((req, res) => {
     req.on('data', chunk => { body += chunk; if (body.length > MAX_BODY) { req.destroy(); return; } });
     req.on('end', () => {
       try {
-        const { filename, content } = JSON.parse(body);
+        let parsed;
+        try { parsed = JSON.parse(body); } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
+          return;
+        }
+        const { filename, content } = parsed;
         if (!filename || !content) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Missing filename or content' }));
@@ -55,7 +66,7 @@ const server = http.createServer((req, res) => {
         }
 
         // Sanitize filename
-        const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '-');
+        const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 255);
         const filePath = path.join(projectPath, safe);
         fs.writeFileSync(filePath, content, 'utf8');
 
