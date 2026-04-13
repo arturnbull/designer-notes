@@ -27,7 +27,7 @@ Every comment is saved with its CSS selector and click position into a structure
 
 - **Pin notes to any element** — click a heading, button, or card to attach feedback
 - **Batch reviews** — leave all your notes first, submit once
-- **Slash commands** — add `/bolder` or `/arrange` to invoke skills on specific elements
+- **Slash commands** — use your environment's existing Claude skills
 - **Model directives** — use `#opus`, `#sonnet`, or `#haiku` per comment
 - **Effort directives** — use `#high-effort`, `#medium-effort`, or `#low-effort`
 - **Auto-save** — comments persist and export to markdown automatically
@@ -41,6 +41,7 @@ Every comment is saved with its CSS selector and click position into a structure
 | `C` | Toggle comment mode |
 | `⌘\` | Open / close panel |
 | `⌘.` | Show / hide all UI |
+| `⌘\` | Show / hide sidepanel |
 
 ## Manual install
 
