@@ -1,0 +1,33 @@
+{
+  "name": "designer-notes",
+  "version": "1.0.0",
+  "description": "Figma-style feedback commenting for AI-generated UI. Claude Code skills for pinning notes to HTML elements and applying changes.",
+  "bin": {
+    "designer-notes": "./bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "skills/",
+    "designer-notes.js",
+    "serve.js"
+  ],
+  "keywords": [
+    "claude-code",
+    "design-feedback",
+    "ui-review",
+    "commenting",
+    "figma",
+    "ai",
+    "skills"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arturnbull/designer-notes.git"
+  },
+  "homepage": "https://arturnbull.github.io/designer-notes-landing-page/",
+  "author": "Andrew Turnbull",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

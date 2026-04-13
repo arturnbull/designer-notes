@@ -1,2 +1,73 @@
 # designer-notes
-Pin comments just like you would in your favourite design tools, then hand off to Claude Code to apply the changes.
+
+Pin comments to HTML elements, just like Figma. Then hand off to Claude Code to apply the changes.
+
+## Install
+
+```bash
+npx designer-notes
+```
+
+This installs two Claude Code skills and the tool files to `~/.claude/skills/`.
+
+## Quick start
+
+1. Open Claude Code in any project with HTML files
+2. Run `/designer-notes` — it adds the script and starts the dev server
+3. Press **C** to enter comment mode, click elements to leave notes
+4. Run `/submit-feedback` — Claude reads your notes and edits the code
+
+## What it does
+
+**designer-notes** is a browser-based commenting tool for reviewing AI-generated UI. It gives you a Figma-like workflow for leaving design feedback directly on rendered HTML pages.
+
+Every comment is saved with its CSS selector and click position into a structured markdown file. When you run `/submit-feedback`, Claude reads that file and applies each change to the source code.
+
+### Features
+
+- **Pin notes to any element** — click a heading, button, or card to attach feedback
+- **Batch reviews** — leave all your notes first, submit once
+- **Slash commands** — add `/bolder` or `/arrange` to invoke skills on specific elements
+- **Model directives** — use `#opus`, `#sonnet`, or `#haiku` per comment
+- **Auto-save** — comments persist and export to markdown automatically
+
+## Manual install
+
+If you don't have npm, download the files directly:
+
+```bash
+mkdir -p ~/.claude/skills/designer-notes ~/.claude/skills/submit-feedback
+
+# Tool files
+curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/designer-notes.js \
+  -o ~/.claude/skills/designer-notes/designer-notes.js
+curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/serve.js \
+  -o ~/.claude/skills/designer-notes/serve.js
+
+# Skill files
+curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/skills/designer-notes/SKILL.md \
+  -o ~/.claude/skills/designer-notes/SKILL.md
+curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/skills/submit-feedback/SKILL.md \
+  -o ~/.claude/skills/submit-feedback/SKILL.md
+```
+
+Then restart Claude Code.
+
+## How it works
+
+1. `/designer-notes` adds a `<script>` tag to your HTML and starts a local dev server (port 3847)
+2. Press **C** in the browser to enter comment mode — click elements to place numbered pins
+3. Type your feedback in the popover. Use `/skills` and `#directives` for advanced control
+4. Comments auto-save to `feedback-YYYY-MM-DD.md` in your project directory
+5. `/submit-feedback` parses the markdown, locates each element in source, and applies changes
+6. After changes are applied, the browser clears automatically for the next review round
+
+## Requirements
+
+- [Claude Code](https://claude.ai/code)
+- Node.js 14+ (for the dev server)
+- Any modern browser
+
+## License
+
+MIT

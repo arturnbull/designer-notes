@@ -1,0 +1,2052 @@
+(function () {
+  'use strict';
+
+  if (window.__dnInitialized) return;
+  window.__dnInitialized = true;
+
+  // =========================================================================
+  // STATE
+  // =========================================================================
+
+  var STORAGE_KEY = 'dn-comments';
+  var SERVER_URL = window.location.origin;
+  var POLL_INTERVAL = 3000;
+  var serverAvailable = false;
+
+  var state = {
+    critMode: false,
+    comments: [],
+    nextId: 1,
+    editingCommentId: null,
+    panelOpen: false,
+    skills: [],
+    directives: [],
+    preferences: {},
+  };
+
+  function currentPage() {
+    return window.location.pathname.replace(/^\//, '') || 'index';
+  }
+
+  function pageComments() {
+    return state.comments.filter(function (c) { return c.page === currentPage(); });
+  }
+
+  // =========================================================================
+  // UNDO
+  // =========================================================================
+
+  var undoStack = [];
+  var UNDO_MAX = 50;
+
+  function pushUndo(type) {
+    undoStack.push({
+      type: type,
+      comments: JSON.parse(JSON.stringify(state.comments)),
+      nextId: state.nextId,
+    });
+    if (undoStack.length > UNDO_MAX) undoStack.shift();
+  }
+
+  function undo() {
+    if (undoStack.length === 0) { showToast('Nothing to undo'); return; }
+    var entry = undoStack.pop();
+    state.comments = entry.comments;
+    state.nextId = entry.nextId;
+    saveState();
+    closePopover();
+    rerenderAllPins();
+    if (state.panelOpen) renderCommentList();
+    updateBadge();
+    showToast('Undid: ' + entry.type);
+  }
+
+  // =========================================================================
+  // PERSISTENCE
+  // =========================================================================
+
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        comments: state.comments,
+        nextId: state.nextId,
+      }));
+    } catch (e) {}
+  }
+
+  function loadState() {
+    try {
+      var data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (data && data.comments) {
+        state.comments = data.comments;
+        state.nextId = data.nextId || state.comments.length + 1;
+        // Migration: strip removed fields from old data
+        state.comments.forEach(function (c) {
+          delete c.resolved;
+          delete c.resolvedAt;
+          delete c.replies;
+        });
+      }
+    } catch (e) {}
+  }
+
+  function detectServer() {
+    fetch(SERVER_URL + '/server-info', { method: 'GET' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.active) {
+          serverAvailable = true;
+          startClearPoll();
+          loadConfig();
+        }
+      })
+      .catch(function () { serverAvailable = false; });
+  }
+
+  function loadConfig() {
+    fetch(SERVER_URL + '/config', { method: 'GET' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.skills) state.skills = d.skills;
+        if (d && d.directives) state.directives = d.directives;
+        if (d && d.preferences) { state.preferences = d.preferences; applyUIVisibility(); }
+      })
+      .catch(function () {});
+  }
+
+  function saveToServer(filename, content) {
+    if (!serverAvailable) return Promise.reject(new Error('No server'));
+    return fetch(SERVER_URL + '/save-feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: filename, content: content }),
+    }).then(function (r) { return r.json(); });
+  }
+
+  // Auto-export: saves markdown to server after every comment change
+  function autoExport() {
+    if (!serverAvailable || state.comments.length === 0) return;
+    var md = generateMarkdown();
+    var dateSlug = new Date().toISOString().substring(0, 10);
+    saveToServer('feedback-' + dateSlug + '.md', md).catch(function () {});
+  }
+
+  // Clear signal: poll server to detect when feedback has been archived
+  var clearPollInterval = null;
+
+  function startClearPoll() {
+    if (clearPollInterval || !serverAvailable) return;
+    clearPollInterval = setInterval(function () {
+      fetch(SERVER_URL + '/clear-signal', { method: 'GET' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.clear) clearAllComments();
+        })
+        .catch(function () {});
+    }, POLL_INTERVAL);
+    window.addEventListener('beforeunload', function () {
+      clearInterval(clearPollInterval);
+      clearPollInterval = null;
+    });
+  }
+
+  function clearAllComments() {
+    state.comments = [];
+    state.nextId = 1;
+    state.editingCommentId = null;
+    undoStack.length = 0;
+    saveState();
+    closePopover();
+    rerenderAllPins();
+    updateBadge();
+
+    if (state.panelOpen) {
+      showRefreshInPanel();
+    } else {
+      showRefreshDialog();
+    }
+  }
+
+  var REFRESH_ICON = '<svg class="dn-refresh-icon" viewBox="0 0 24 24" data-designer-notes><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+
+  function showRefreshInPanel() {
+    commentListEl.innerHTML =
+      '<div class="dn-refresh-prompt" data-designer-notes>' +
+        REFRESH_ICON +
+        '<div class="dn-refresh-heading" data-designer-notes>Feedback applied</div>' +
+        '<p class="dn-refresh-sub" data-designer-notes>Changes are live. Refresh to see updates.</p>' +
+        '<a class="dn-changelog-link" href="/.designer-notes/changelog.html" target="_blank" data-designer-notes>View changelog</a>' +
+        '<button class="dn-refresh-btn" data-designer-notes>Refresh page</button>' +
+      '</div>';
+    commentListEl.querySelector('.dn-refresh-btn').addEventListener('click', function () {
+      window.location.reload();
+    });
+  }
+
+  function showRefreshDialog() {
+    var overlay = document.createElement('div');
+    overlay.className = 'dn-confirm-overlay';
+    overlay.setAttribute('data-designer-notes', 'confirm');
+    overlay.innerHTML =
+      '<div class="dn-confirm dn-refresh-dialog" data-designer-notes>' +
+        REFRESH_ICON +
+        '<div class="dn-refresh-heading" data-designer-notes>Feedback applied</div>' +
+        '<p class="dn-refresh-sub" data-designer-notes>Changes are live. Refresh to see updates.</p>' +
+        '<a class="dn-changelog-link" href="/.designer-notes/changelog.html" target="_blank" data-designer-notes>View changelog</a>' +
+        '<div class="dn-confirm-actions" data-designer-notes>' +
+          '<button class="dn-confirm-btn dn-confirm-cancel" data-designer-notes>Dismiss</button>' +
+          '<button class="dn-confirm-btn dn-refresh-btn-primary" data-designer-notes>Refresh page</button>' +
+        '</div>' +
+      '</div>';
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.remove();
+    });
+    overlay.querySelector('.dn-confirm-cancel').addEventListener('click', function () { overlay.remove(); });
+    overlay.querySelector('.dn-refresh-btn-primary').addEventListener('click', function () {
+      window.location.reload();
+    });
+    document.body.appendChild(overlay);
+  }
+
+  // =========================================================================
+  // SETTINGS
+  // =========================================================================
+
+  function showSettings() {
+    if (!panelEl) return;
+    var titleEl = panelEl.querySelector('.dn-panel-title');
+    if (titleEl) titleEl.textContent = 'Settings';
+
+    var models = (state.preferences.availableModels || ['opus', 'sonnet', 'haiku']);
+    var currentModel = state.preferences.defaultModel || 'sonnet';
+    var efforts = ['high-effort', 'medium-effort', 'low-effort'];
+    var currentEffort = state.preferences.defaultEffort || 'medium-effort';
+
+    var autoApply = state.preferences.autoApply !== false;
+    var showToggle = state.preferences.hideToggleButton !== true;
+
+    var modelCards = models.map(function (m) {
+      var label = m.charAt(0).toUpperCase() + m.slice(1);
+      var sel = m === currentModel ? ' dn-card-selected' : '';
+      return '<button class="dn-card-option' + sel + '" data-value="' + m + '" data-designer-notes>' + label + '</button>';
+    }).join('');
+
+    var effortCards = efforts.map(function (e) {
+      var label = e.replace('-effort', '');
+      label = label.charAt(0).toUpperCase() + label.slice(1);
+      var sel = e === currentEffort ? ' dn-card-selected' : '';
+      return '<button class="dn-card-option' + sel + '" data-value="' + e + '" data-designer-notes>' + label + '</button>';
+    }).join('');
+
+    // Animate in: add transitioning class, then remove after frame
+    commentListEl.classList.add('dn-view-entering');
+
+    commentListEl.innerHTML =
+      '<div class="dn-settings-view" data-designer-notes>' +
+        '<div class="dn-settings-body" data-designer-notes>' +
+          '<div class="dn-settings-section" data-designer-notes>' +
+            '<div class="dn-settings-label" data-designer-notes>Default model</div>' +
+            '<div class="dn-card-grid dn-settings-model" data-designer-notes>' + modelCards + '</div>' +
+          '</div>' +
+          '<div class="dn-settings-section" data-designer-notes>' +
+            '<div class="dn-settings-label" data-designer-notes>Default effort</div>' +
+            '<div class="dn-card-grid dn-settings-effort" data-designer-notes>' + effortCards + '</div>' +
+          '</div>' +
+          '<div class="dn-settings-section" data-designer-notes>' +
+            '<label class="dn-settings-toggle" data-designer-notes>' +
+              '<input type="checkbox" class="dn-switch-input dn-settings-auto-apply" data-designer-notes' + (autoApply ? ' checked' : '') + '>' +
+              '<span class="dn-switch" data-designer-notes></span>' +
+              '<span class="dn-toggle-label" data-designer-notes>Auto-apply edits</span>' +
+            '</label>' +
+            '<div class="dn-settings-hint" data-designer-notes>Skip confirmation prompt when running /submit-feedback</div>' +
+          '</div>' +
+          '<div class="dn-settings-section" data-designer-notes>' +
+            '<label class="dn-settings-toggle" data-designer-notes>' +
+              '<input type="checkbox" class="dn-switch-input dn-settings-show-toggle" data-designer-notes' + (showToggle ? ' checked' : '') + '>' +
+              '<span class="dn-switch" data-designer-notes></span>' +
+              '<span class="dn-toggle-label" data-designer-notes>Show comment button</span>' +
+            '</label>' +
+            '<div class="dn-settings-hint" data-designer-notes>Hide the floating button in the bottom corner.</div>' +
+          '</div>' +
+          '<div class="dn-settings-section" data-designer-notes>' +
+            '<div class="dn-settings-label" data-designer-notes>Keyboard shortcuts</div>' +
+            '<div class="dn-shortcut-list" data-designer-notes>' +
+              '<div class="dn-shortcut-row" data-designer-notes><kbd data-designer-notes>C</kbd><span data-designer-notes>Toggle comment mode</span></div>' +
+              '<div class="dn-shortcut-row" data-designer-notes><kbd data-designer-notes>\u2318.</kbd><span data-designer-notes>Show / hide all UI</span></div>' +
+              '<div class="dn-shortcut-row" data-designer-notes><kbd data-designer-notes>\u2318Z</kbd><span data-designer-notes>Undo</span></div>' +
+              '<div class="dn-shortcut-row" data-designer-notes><kbd data-designer-notes>Esc</kbd><span data-designer-notes>Close popover or panel</span></div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="dn-settings-actions" data-designer-notes>' +
+          '<button class="dn-settings-back" data-designer-notes>Cancel</button>' +
+          '<button class="dn-settings-save" data-designer-notes>Save</button>' +
+        '</div>' +
+      '</div>';
+
+    // Trigger transition: remove entering class next frame so CSS animates
+    requestAnimationFrame(function () {
+      commentListEl.classList.remove('dn-view-entering');
+    });
+
+    // Card selection for model
+    commentListEl.querySelector('.dn-settings-model').addEventListener('click', function (e) {
+      var btn = e.target.closest('.dn-card-option');
+      if (!btn) return;
+      this.querySelectorAll('.dn-card-option').forEach(function (b) { b.classList.remove('dn-card-selected'); });
+      btn.classList.add('dn-card-selected');
+    });
+
+    // Card selection for effort
+    commentListEl.querySelector('.dn-settings-effort').addEventListener('click', function (e) {
+      var btn = e.target.closest('.dn-card-option');
+      if (!btn) return;
+      this.querySelectorAll('.dn-card-option').forEach(function (b) { b.classList.remove('dn-card-selected'); });
+      btn.classList.add('dn-card-selected');
+    });
+
+    commentListEl.querySelector('.dn-settings-save').addEventListener('click', saveSettings);
+    commentListEl.querySelector('.dn-settings-back').addEventListener('click', function () {
+      commentListEl.classList.add('dn-view-leaving');
+      setTimeout(function () {
+        commentListEl.classList.remove('dn-view-leaving');
+        renderCommentList();
+      }, 150);
+    });
+  }
+
+  function saveSettings() {
+    var modelGrid = commentListEl.querySelector('.dn-settings-model');
+    var effortGrid = commentListEl.querySelector('.dn-settings-effort');
+    var autoApplyCheck = commentListEl.querySelector('.dn-settings-auto-apply');
+    var showToggleCheck = commentListEl.querySelector('.dn-settings-show-toggle');
+    if (!modelGrid || !effortGrid) return;
+
+    var selectedModel = modelGrid.querySelector('.dn-card-selected');
+    var selectedEffort = effortGrid.querySelector('.dn-card-selected');
+    if (!selectedModel || !selectedEffort) return;
+
+    var newPrefs = {
+      defaultModel: selectedModel.dataset.value,
+      defaultEffort: selectedEffort.dataset.value,
+      availableModels: state.preferences.availableModels || ['opus', 'sonnet', 'haiku'],
+      autoApply: autoApplyCheck ? autoApplyCheck.checked : true,
+      hideToggleButton: showToggleCheck ? !showToggleCheck.checked : false,
+      showUI: state.preferences.showUI,
+    };
+
+    state.preferences = newPrefs;
+    applyUIVisibility();
+
+    if (serverAvailable) {
+      fetch(SERVER_URL + '/save-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferences: newPrefs }),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.saved) showToast('Settings saved');
+        })
+        .catch(function () {
+          showToast('Failed to save');
+        });
+    }
+
+    // Animate out before switching view
+    commentListEl.classList.add('dn-view-leaving');
+    setTimeout(function () {
+      commentListEl.classList.remove('dn-view-leaving');
+      renderCommentList();
+    }, 150);
+  }
+
+  // =========================================================================
+  // UI VISIBILITY
+  // =========================================================================
+
+  function applyUIVisibility() {
+    var visible = state.preferences.showUI !== false;
+    if (visible) {
+      document.body.classList.remove('dn-ui-hidden');
+    } else {
+      document.body.classList.add('dn-ui-hidden');
+    }
+    // Toggle button visibility (separate from full UI hide)
+    if (state.preferences.hideToggleButton) {
+      document.body.classList.add('dn-toggle-hidden');
+    } else {
+      document.body.classList.remove('dn-toggle-hidden');
+    }
+  }
+
+  function toggleUIVisibility() {
+    state.preferences.showUI = state.preferences.showUI === false ? true : false;
+    applyUIVisibility();
+    if (serverAvailable) {
+      fetch(SERVER_URL + '/save-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferences: state.preferences }),
+      }).catch(function () {});
+    }
+  }
+
+  // =========================================================================
+  // UTILITIES
+  // =========================================================================
+
+  function showConfirm(msg, onConfirm) {
+    var overlay = document.createElement('div');
+    overlay.className = 'dn-confirm-overlay';
+    overlay.setAttribute('data-designer-notes', 'confirm');
+    overlay.innerHTML =
+      '<div class="dn-confirm" data-designer-notes>' +
+        '<div class="dn-confirm-msg" data-designer-notes>' + msg + '</div>' +
+        '<div class="dn-confirm-actions" data-designer-notes>' +
+          '<button class="dn-confirm-btn dn-confirm-cancel" data-designer-notes>Cancel</button>' +
+          '<button class="dn-confirm-btn dn-confirm-danger" data-designer-notes>Delete</button>' +
+        '</div>' +
+      '</div>';
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.remove();
+    });
+    overlay.querySelector('.dn-confirm-cancel').addEventListener('click', function () { overlay.remove(); });
+    overlay.querySelector('.dn-confirm-danger').addEventListener('click', function () { overlay.remove(); onConfirm(); });
+    document.body.appendChild(overlay);
+  }
+
+  var _escapeDiv = document.createElement('div');
+  function escapeHtml(str) {
+    _escapeDiv.textContent = str;
+    return _escapeDiv.innerHTML;
+  }
+
+  var HIDDEN_SKILL_NAMES = ['designer-notes', 'submit-feedback', 'hotspot-scan'];
+
+  function autoResizeTextarea(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  }
+
+  function updateHighlight(val, el) {
+    if (!el) return;
+    var skillNames = state.skills.filter(function (s) {
+      return HIDDEN_SKILL_NAMES.indexOf(s.name) === -1;
+    }).map(function (s) { return s.name; });
+    var directiveNames = state.directives.map(function (d) { return d.name; });
+    if (skillNames.length === 0 && directiveNames.length === 0) { el.textContent = val; return; }
+    var html = escapeHtml(val);
+    if (skillNames.length > 0) {
+      var sp = new RegExp('(^|\\s)(\\/(' + skillNames.join('|') + '))(?=\\s|$)', 'gm');
+      html = html.replace(sp, function (m, pre, cmd) {
+        return pre + '<span class="dn-skill-hl">' + cmd + '</span>';
+      });
+    }
+    if (directiveNames.length > 0) {
+      var dp = new RegExp('(^|\\s)(#(' + directiveNames.join('|') + '))(?=\\s|$)', 'gm');
+      html = html.replace(dp, function (m, pre, cmd) {
+        return pre + '<span class="dn-skill-hl">' + cmd + '</span>';
+      });
+    }
+    el.innerHTML = html;
+  }
+
+  function relativeTime(iso) {
+    if (!iso) return '';
+    var then = new Date(iso).getTime();
+    if (isNaN(then)) return '';
+    var diff = Math.floor((Date.now() - then) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    if (diff < 172800) return 'yesterday';
+    return Math.floor(diff / 86400) + 'd ago';
+  }
+
+  var toastEl, toastTimer;
+  function showToast(msg) {
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.className = 'dn-toast';
+      toastEl.setAttribute('data-designer-notes', 'toast');
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = msg;
+    toastEl.classList.add('dn-toast-visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('dn-toast-visible'); }, 2500);
+  }
+
+  // =========================================================================
+  // STYLES
+  // =========================================================================
+
+  var STYLES = [
+    '[data-designer-notes]{' +
+      '--dn-brand:#3b82f6;--dn-brand-hover:#2563eb;--dn-brand-dark:#1d4ed8;' +
+      '--dn-blue-light:#60a5fa;' +
+      '--dn-danger:#ef4444;--dn-danger-hover:#dc2626;' +
+      '--dn-text:#0f172a;--dn-text-secondary:#475569;--dn-text-muted:#94a3b8;--dn-text-faint:#cbd5e1;' +
+      '--dn-bg:#f8fafc;--dn-bg-subtle:#f1f5f9;--dn-bg-tinted:#e2e8f0;--dn-bg-hover:#dbeafe;' +
+      '--dn-border:#cbd5e1;--dn-border-light:#e2e8f0;' +
+      '--dn-font-xs:11px;--dn-font-sm:12px;--dn-font-base:13px;--dn-font-lg:15px;' +
+      'box-sizing:border-box;font-family:"Outfit",-apple-system,BlinkMacSystemFont,sans-serif;line-height:1.4;-webkit-font-smoothing:antialiased' +
+    '}',
+
+    '[data-designer-notes]:focus-visible{outline:2px solid var(--dn-brand);outline-offset:2px}',
+    '[data-designer-notes] button:focus-visible,[data-designer-notes] textarea:focus-visible{outline:2px solid var(--dn-brand);outline-offset:2px}',
+
+    // Toggle
+    '.dn-toggle{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:24px;background:var(--dn-brand);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.2);z-index:2147483640;transition:transform .15s,background .15s;padding:0}',
+    '.dn-toggle:hover{transform:scale(1.08);background:var(--dn-brand-hover)}',
+    '.dn-toggle.dn-active{background:var(--dn-danger)}',
+    '.dn-toggle.dn-active:hover{background:var(--dn-danger-hover)}',
+    '.dn-toggle svg{width:24px;height:24px;fill:#fff}',
+    '.dn-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:10px;background:var(--dn-danger);color:#fff;font-size:var(--dn-font-xs);font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px}',
+    '.dn-toggle.dn-active .dn-badge{background:#fff;color:var(--dn-danger)}',
+    '.dn-badge:empty,.dn-badge[data-count="0"]{display:none}',
+
+    'body.dn-crit-mode,body.dn-crit-mode *:not([data-designer-notes]):not([data-designer-notes] *){cursor:crosshair!important}',
+
+    // Pins
+    '.dn-pin{position:absolute;width:28px;height:28px;border-radius:50% 50% 50% 0;background:var(--dn-brand);color:#fff;font-size:var(--dn-font-sm);font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.25);z-index:2147483639;cursor:grab;transform:rotate(-45deg);transition:transform .15s,background .15s;pointer-events:auto}',
+    '.dn-pin span{transform:rotate(45deg)}',
+    '.dn-pin:hover{animation:dn-pin-bounce .3s cubic-bezier(0.25,1,0.5,1) forwards}',
+    '@keyframes dn-pin-bounce{0%{transform:rotate(-45deg) scale(1)}40%{transform:rotate(-45deg) scale(1.18)}100%{transform:rotate(-45deg) scale(1.12)}}',
+    '.dn-pin.dn-pin-editing{background:var(--dn-brand-dark);transform:rotate(-45deg) scale(1.12);animation:none}',
+    '@media(prefers-reduced-motion:reduce){.dn-pin:hover{animation:none;transform:rotate(-45deg) scale(1.12)}}',
+    '.dn-pin.dn-pin-dragging{cursor:grabbing!important;transform:rotate(-45deg) scale(1.2);opacity:0.85;transition:none}',
+    '.dn-pin.dn-pin-detached{background:var(--dn-text-muted);border:2px dashed var(--dn-text-secondary)}',
+    '@keyframes dn-pin-pop{0%{transform:rotate(-45deg) scale(0);opacity:0}60%{transform:rotate(-45deg) scale(1.2);opacity:1}100%{transform:rotate(-45deg) scale(1);opacity:1}}',
+    '.dn-pin-new{animation:dn-pin-pop .3s ease forwards}',
+
+    // Preview
+    '.dn-preview{position:absolute;background:var(--dn-bg);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15),0 1px 3px rgba(0,0,0,.1);padding:8px 12px;max-width:280px;min-width:120px;z-index:2147483643;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;font-size:var(--dn-font-base);color:var(--dn-text);word-wrap:break-word}',
+    '.dn-preview.dn-preview-visible{opacity:1;transform:translateY(0)}',
+    '.dn-preview-empty{color:var(--dn-text-muted);font-style:italic}',
+    '.dn-preview-number{font-size:var(--dn-font-xs);font-weight:700;color:var(--dn-brand);margin-bottom:4px}',
+
+    // Popover
+    '.dn-popover{position:absolute;background:var(--dn-bg);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.15),0 2px 6px rgba(0,0,0,.1);width:320px;z-index:2147483644;transform-origin:top left;display:none}',
+    '.dn-popover.dn-popover-visible{display:block}',
+    '.dn-popover.dn-popover-enter{animation:dn-popover-in .2s cubic-bezier(0.25,1,0.5,1) forwards}',
+    '.dn-popover.dn-popover-exit{animation:dn-popover-out .15s cubic-bezier(0.5,0,0.75,0) forwards}',
+    '@keyframes dn-popover-in{0%{opacity:0;transform:scale(.95) translateY(4px)}100%{opacity:1;transform:scale(1) translateY(0)}}',
+    '@keyframes dn-popover-out{0%{opacity:1;transform:scale(1) translateY(0)}100%{opacity:0;transform:scale(.97) translateY(2px)}}',
+    '@media(prefers-reduced-motion:reduce){.dn-popover.dn-popover-enter,.dn-popover.dn-popover-exit{animation:none}}',
+    '.dn-popover-header{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 8px 16px;background:var(--dn-bg-tinted);border-bottom:1px solid var(--dn-border-light)}',
+    '.dn-popover-context{display:flex;align-items:center;gap:8px;font-size:var(--dn-font-xs);color:var(--dn-text-muted);flex:1;min-width:0}',
+    '.dn-popover-tag{background:var(--dn-border);color:var(--dn-text-secondary);padding:1px 6px;border-radius:3px;font-size:var(--dn-font-xs);font-weight:700;font-family:"JetBrains Mono",monospace}',
+    '.dn-popover-context-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}',
+    '.dn-popover-toolbar{display:flex;align-items:center;gap:2px;flex-shrink:0}',
+    '.dn-popover-toolbar-divider{width:1px;height:16px;background:var(--dn-border);margin:0 2px}',
+    '.dn-popover-toolbar>button,.dn-popover-toolbar>.dn-popover-menu-wrap .dn-popover-more{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dn-text-muted);transition:background .15s,color .15s}',
+    '.dn-popover-toolbar>button:hover,.dn-popover-toolbar .dn-popover-more:hover{background:var(--dn-bg-hover);color:var(--dn-text)}',
+    '.dn-popover-toolbar>button svg,.dn-popover-more svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+    '.dn-popover-more svg circle{fill:currentColor;stroke:none}',
+    '.dn-popover-close svg{width:18px;height:18px;stroke-width:2.5}',
+    '.dn-popover-menu-wrap{position:relative}',
+    '.dn-popover-toolbar .dn-popover-more.dn-popover-more-active{background:var(--dn-bg-hover);color:var(--dn-text)}',
+    '.dn-popover-menu{display:none;position:absolute;top:100%;right:0;margin-top:4px;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.3);width:190px;padding:4px;z-index:2147483645;transform-origin:top right}',
+    '.dn-popover-menu.dn-popover-menu-open{display:block;animation:dn-menu-in .15s cubic-bezier(0.25,1,0.5,1) forwards}',
+    '@keyframes dn-menu-in{0%{opacity:0;transform:scale(.95) translateY(-4px)}100%{opacity:1;transform:scale(1) translateY(0)}}',
+    '@media(prefers-reduced-motion:reduce){.dn-popover-menu.dn-popover-menu-open{animation:none}}',
+    '.dn-popover-menu-item{display:block;width:100%;height:auto;padding:8px 12px;border:none;background:none;border-radius:6px;font-size:var(--dn-font-base);font-weight:500;font-family:inherit;color:rgba(255,255,255,.85);cursor:pointer;transition:background .15s,color .15s;white-space:nowrap;text-align:left;line-height:1.3}',
+    '.dn-popover-menu-item:hover{background:rgba(255,255,255,.1);color:#fff}',
+    '.dn-confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:2147483646;display:flex;align-items:center;justify-content:center}',
+    '.dn-confirm{background:var(--dn-bg);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.15),0 2px 6px rgba(0,0,0,.1);width:390px;padding:20px 20px 16px}',
+    '.dn-confirm-msg{font-size:15px;font-weight:500;color:var(--dn-text);margin-bottom:20px;line-height:1.45}',
+    '.dn-confirm-actions{display:flex;gap:8px;justify-content:flex-end}',
+    '.dn-confirm-btn{height:32px;padding:0 16px;border-radius:8px;border:none;font-size:var(--dn-font-base);font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s}',
+    '.dn-confirm-cancel{background:var(--dn-bg-subtle);color:var(--dn-text-secondary)}',
+    '.dn-confirm-cancel:hover{background:var(--dn-bg-hover);color:var(--dn-text)}',
+    '.dn-confirm-danger{background:var(--dn-danger);color:#fff}',
+    '.dn-confirm-danger:hover{background:var(--dn-danger-hover)}',
+    '.dn-refresh-icon{width:36px;height:36px;fill:none;stroke:var(--dn-brand);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;margin-bottom:12px}',
+    '.dn-refresh-heading{font-size:1rem;font-weight:700;color:var(--dn-text);margin-bottom:4px;letter-spacing:-0.01em}',
+    '.dn-refresh-sub{font-size:var(--dn-font-sm);color:var(--dn-text-muted);margin:0 0 20px;line-height:1.5}',
+    '.dn-refresh-prompt{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center}',
+    '.dn-refresh-dialog{text-align:center;display:flex;flex-direction:column;align-items:center}',
+    '.dn-refresh-dialog .dn-confirm-actions{justify-content:center}',
+    '.dn-refresh-btn{padding:0 20px;height:32px;border-radius:8px;border:none;background:var(--dn-brand);color:#fff;font-size:var(--dn-font-base);font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s}',
+    '.dn-refresh-btn:hover{background:var(--dn-brand-hover)}',
+    '.dn-refresh-btn-primary{background:var(--dn-brand)!important;color:#fff!important}',
+    '.dn-refresh-btn-primary:hover{background:var(--dn-brand-hover)!important}',
+    '.dn-changelog-link{font-size:var(--dn-font-sm);color:var(--dn-brand);text-decoration:none;margin-bottom:16px;transition:color .15s;display:inline-block}',
+    '.dn-changelog-link:hover{color:var(--dn-brand-hover);text-decoration:underline}',
+    // Skill autocomplete
+    '.dn-skill-menu{display:none;position:absolute;left:8px;right:8px;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-height:200px;overflow-y:auto;z-index:2147483645;padding:4px}',
+    '.dn-skill-menu.dn-skill-menu-open{display:block}',
+    '.dn-skill-item{display:flex;flex-direction:column;gap:2px;width:100%;padding:8px 12px;border:none;background:none;border-radius:6px;cursor:pointer;transition:background .15s;text-align:left}',
+    '.dn-skill-item:hover,.dn-skill-item.dn-skill-active{background:rgba(255,255,255,.1)}',
+    '.dn-skill-item-name{font-size:var(--dn-font-base);font-weight:600;color:rgba(255,255,255,.9);font-family:inherit}',
+    '.dn-skill-item-desc{font-size:var(--dn-font-xs);color:rgba(255,255,255,.45);font-family:inherit}',
+    '.dn-skill-group-hdr{padding:8px 12px 4px;font-size:var(--dn-font-xs);font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.04em}',
+    '.dn-skill-group-hdr:first-child{padding-top:6px}',
+    '.dn-skill-menu::-webkit-scrollbar{width:4px}',
+    '.dn-skill-menu::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}',
+
+    '.dn-popover-body{padding:0;position:relative}',
+    '.dn-textarea-wrap{position:relative}',
+    '.dn-textarea-highlight{position:absolute;top:0;left:0;right:0;bottom:0;padding:6px 16px;font-size:16px;font-family:inherit;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;color:var(--dn-text);pointer-events:none;overflow:hidden}',
+    '.dn-textarea-highlight .dn-skill-hl{color:var(--dn-brand)}',
+    '.dn-popover-textarea{width:100%;min-height:80px;border:none;border-radius:0;padding:6px 16px;font-size:16px;font-family:inherit;color:transparent;caret-color:var(--dn-text);resize:none;outline:none;background:transparent;position:relative;z-index:1;overflow:hidden}',
+    '.dn-popover-textarea:focus,.dn-popover-textarea:focus-visible{outline:none!important}',
+    '.dn-popover-textarea::placeholder{color:var(--dn-text-faint)}',
+    '.dn-popover-footer{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-top:1px solid var(--dn-border-light);background:var(--dn-bg-subtle)}',
+    '.dn-popover-secondary{display:flex;align-items:center;gap:2px}',
+    '.dn-popover-sec-btn{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dn-text-muted);transition:background .15s,color .15s}',
+    '.dn-popover-sec-btn:hover,.dn-popover-sec-btn.dn-sec-active{background:var(--dn-bg-hover);color:var(--dn-text)}',
+    '.dn-popover-sec-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+    '.dn-popover-sec-btn svg circle{fill:currentColor;stroke:none}',
+    '.dn-popover-directives-btn svg{position:relative;top:0.5px}',
+    '.dn-popover-skills-btn svg{width:18px;height:18px}',
+    '.dn-popover-submit{width:32px;height:32px;border-radius:8px;border:none;background:var(--dn-brand);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;transition:background .15s}',
+    '.dn-popover-submit:hover{background:var(--dn-brand-hover)}',
+    '.dn-popover-submit svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}',
+
+    // Panel
+    '.dn-panel{position:fixed;top:0;right:0;width:min(380px,100vw - 48px);min-width:320px;height:100vh;background:var(--dn-bg);box-shadow:-2px 0 16px rgba(0,0,0,.1);z-index:2147483642;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s;overflow:hidden}',
+    '.dn-panel.dn-panel-open{transform:translateX(0)}',
+    '.dn-panel-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--dn-border);flex-shrink:0;background:var(--dn-bg-subtle)}',
+    '.dn-panel-title{font-size:var(--dn-font-lg);font-weight:800;color:var(--dn-text);margin:0;letter-spacing:-0.01em}',
+    '.dn-panel-header-actions{display:flex;align-items:center;gap:8px}',
+    '.dn-panel-copy{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dn-text-muted);transition:background .15s,color .15s}',
+    '.dn-panel-copy:hover{background:var(--dn-bg-hover);color:var(--dn-text-secondary)}',
+    '.dn-panel-copy svg{width:16px;height:16px;fill:currentColor}',
+    '.dn-panel-close{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dn-text-muted);transition:background .15s,color .15s}',
+    '.dn-panel-close:hover{background:var(--dn-bg-hover);color:var(--dn-text-secondary)}',
+    '.dn-panel-close svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+    '.dn-panel-settings,.dn-panel-changelog{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dn-text-muted);transition:background .15s,color .15s;text-decoration:none}',
+    '.dn-panel-settings:hover,.dn-panel-changelog:hover{background:var(--dn-bg-hover);color:var(--dn-text-secondary)}',
+    '.dn-panel-settings svg,.dn-panel-changelog svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+    // Settings view — flex column so actions pin to bottom
+    '.dn-settings-view{display:flex;flex-direction:column;flex:1;height:100%;overflow:hidden}',
+    '.dn-settings-body{flex:1;overflow-y:auto;padding:20px}',
+    '.dn-settings-section{margin-bottom:24px}',
+    // /polish: full ink for label, muted (not faint) for hint
+    '.dn-settings-label{font-size:var(--dn-font-xs);font-weight:700;color:var(--dn-text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}',
+    // /arrange: sticky actions bar, full-width buttons
+    '.dn-settings-actions{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--dn-border);background:var(--dn-bg);flex-shrink:0}',
+    '.dn-settings-save{flex:1;height:34px;border-radius:8px;border:none;background:var(--dn-brand);color:#fff;font-size:var(--dn-font-base);font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s}',
+    '.dn-settings-save:hover{background:var(--dn-brand-hover)}',
+    '.dn-settings-back{flex:1;height:34px;border-radius:8px;border:1px solid var(--dn-border);background:var(--dn-bg-subtle);color:var(--dn-text-secondary);font-size:var(--dn-font-base);font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s,color .15s}',
+    '.dn-settings-back:hover{background:var(--dn-bg-hover);color:var(--dn-text)}',
+    // Card grids replacing selects
+    '.dn-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}',
+    '.dn-card-option{height:34px;border-radius:8px;border:1px solid var(--dn-border);background:var(--dn-bg);color:var(--dn-text-secondary);font-size:var(--dn-font-sm);font-weight:600;font-family:inherit;cursor:pointer;transition:border-color .15s,background .15s,color .15s;outline:none}',
+    '.dn-card-option:hover{border-color:var(--dn-text-muted);color:var(--dn-text)}',
+    '.dn-card-option.dn-card-selected{border-color:var(--dn-brand);background:var(--dn-bg-hover);color:var(--dn-brand);font-weight:700}',
+    '.dn-settings-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:var(--dn-font-base)}',
+    '.dn-toggle-label{color:var(--dn-text);font-size:var(--dn-font-base)}',
+    '.dn-switch-input{position:absolute;opacity:0;width:0;height:0}',
+    '.dn-switch{position:relative;width:36px;height:20px;background:var(--dn-border);border-radius:10px;cursor:pointer;transition:background .2s;flex-shrink:0}',
+    '.dn-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.15)}',
+    '.dn-switch-input:checked+.dn-switch{background:var(--dn-brand)}',
+    '.dn-switch-input:checked+.dn-switch::after{transform:translateX(16px)}',
+    // /polish: muted (not faint) for better readability
+    '.dn-settings-hint{font-size:var(--dn-font-base);color:var(--dn-text-muted);margin-top:6px;line-height:1.5}',
+    '.dn-settings-hint kbd{background:var(--dn-bg-tinted);border:1px solid var(--dn-border);border-radius:3px;padding:0 5px;font-size:var(--dn-font-xs);font-family:inherit}',
+    '.dn-shortcut-list{display:flex;flex-direction:column;gap:8px}',
+    '.dn-shortcut-row{display:flex;align-items:center;gap:10px;font-size:var(--dn-font-base);color:var(--dn-text-secondary)}',
+    '.dn-shortcut-row kbd{min-width:32px;text-align:center;background:var(--dn-bg-tinted);border:1px solid var(--dn-border);border-radius:4px;padding:2px 6px;font-size:var(--dn-font-sm);font-family:inherit;font-weight:600;color:var(--dn-text)}',
+    // /animate: view transitions
+    '.dn-view-entering{opacity:0;transform:translateX(12px)}',
+    '.dn-view-leaving{opacity:0;transform:translateX(-12px);pointer-events:none}',
+    'body.dn-ui-hidden [data-designer-notes="toggle"],body.dn-ui-hidden [data-designer-notes="pins"],body.dn-ui-hidden [data-designer-notes="panel"],body.dn-ui-hidden [data-designer-notes="popover"],body.dn-ui-hidden [data-designer-notes="preview"]{display:none!important}',
+    'body.dn-toggle-hidden [data-designer-notes="toggle"]{display:none!important}',
+    '.dn-comment-list{flex:1;overflow-y:auto;padding:0;transition:opacity .15s ease-out,transform .15s ease-out}',
+    '.dn-comment-list::-webkit-scrollbar{width:6px}',
+    '.dn-comment-list::-webkit-scrollbar-thumb{background:var(--dn-border);border-radius:3px}',
+    '.dn-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:40px;color:var(--dn-text-muted);text-align:center}',
+    '.dn-empty svg{width:40px;height:40px;fill:var(--dn-border);margin-bottom:12px}',
+    '.dn-empty p{font-size:var(--dn-font-base);margin:0}',
+    '.dn-page-group{padding:8px 20px;font-size:var(--dn-font-xs);font-weight:700;color:var(--dn-blue-light);text-transform:uppercase;letter-spacing:.04em;background:var(--dn-bg-tinted);border-bottom:1px solid var(--dn-border-light)}',
+    '.dn-comment-row{padding:12px 20px;border-bottom:1px solid var(--dn-border-light);display:flex;align-items:flex-start;gap:8px;cursor:pointer;transition:background .15s}',
+    '.dn-comment-row:hover{background:var(--dn-bg-hover)}',
+    '.dn-row-number{width:22px;height:22px;border-radius:50%;background:var(--dn-brand);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}',
+    '.dn-row-content{flex:1;min-width:0;position:relative}',
+    '.dn-row-meta{display:flex;align-items:center;gap:6px;margin-bottom:4px}',
+    '.dn-row-tag{font-size:var(--dn-font-xs);font-weight:700;color:var(--dn-text-muted);font-family:"JetBrains Mono",monospace;background:var(--dn-bg-tinted);padding:0 4px;border-radius:2px}',
+    '.dn-row-time{font-size:var(--dn-font-xs);color:var(--dn-text-faint)}',
+    '.dn-row-page-badge{font-size:var(--dn-font-xs);color:var(--dn-text-faint);background:var(--dn-bg-tinted);padding:0 6px;border-radius:3px;margin-left:auto}',
+    '.dn-row-text{font-size:var(--dn-font-base);color:var(--dn-text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-wrap:break-word}',
+    '.dn-row-text-empty{color:var(--dn-text-muted);font-style:italic}',
+
+    // Accordion expanded state
+    '.dn-comment-row.dn-row-expanded{background:var(--dn-bg);cursor:default}',
+    '.dn-comment-row.dn-row-expanded:hover{background:var(--dn-bg)}',
+    '.dn-row-expand-body{display:none;margin-top:12px}',
+    '.dn-row-expanded .dn-row-expand-body{display:block}',
+    '.dn-row-expanded .dn-row-text{display:none}',
+    '.dn-row-textarea-wrap{position:relative;background:var(--dn-bg);border-radius:6px}',
+    '.dn-row-textarea-highlight{position:absolute;top:0;left:0;right:0;bottom:0;padding:8px 10px;font-size:var(--dn-font-base);font-family:inherit;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;color:var(--dn-text);pointer-events:none;overflow:hidden;border-radius:6px}',
+    '.dn-row-textarea-highlight .dn-skill-hl{color:var(--dn-brand)}',
+    '.dn-row-textarea{width:100%;min-height:64px;border:1px solid var(--dn-border);border-radius:6px;padding:8px 10px;font-size:var(--dn-font-base);font-family:inherit;color:transparent;caret-color:var(--dn-text);background:transparent;position:relative;z-index:1;resize:none;outline:none;transition:border-color .15s;overflow:hidden}',
+    '.dn-row-textarea:focus{border-color:var(--dn-brand)}',
+    '.dn-row-textarea::placeholder{color:var(--dn-text-faint)}',
+    '.dn-row-actions{display:flex;justify-content:space-between;align-items:center;gap:4px;margin-top:2px}',
+    '.dn-row-secondary{display:flex;align-items:center;gap:2px}',
+    '.dn-row-primary{display:flex;align-items:center;gap:2px}',
+    '.dn-row-btn{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dn-text-muted);transition:background .15s,color .15s}',
+    '.dn-row-btn:hover{background:var(--dn-bg-hover)}',
+    '.dn-row-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+    '.dn-row-skills-btn svg,.dn-row-directives-btn svg{width:18px;height:18px}',
+    '.dn-row-btn.dn-sec-active{background:var(--dn-bg-hover);color:var(--dn-text)}',
+    '.dn-row-delete{position:absolute;top:-4px;right:0}',
+    '.dn-row-delete:hover{color:var(--dn-danger)}',
+    '.dn-row-done:hover{color:var(--dn-brand)}',
+    '.dn-panel-skill-menu{display:none;position:absolute;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-height:200px;overflow-y:auto;z-index:2147483645;padding:4px}',
+    '.dn-panel-skill-menu.dn-skill-menu-open{display:block}',
+    '.dn-panel-skill-menu::-webkit-scrollbar{width:4px}',
+    '.dn-panel-skill-menu::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}',
+
+    // Toast
+    '.dn-toast{position:fixed;bottom:80px;right:24px;background:var(--dn-text);color:#fff;padding:8px 20px;border-radius:8px;font-size:var(--dn-font-base);font-weight:500;z-index:2147483647;opacity:0;transform:translateY(10px);transition:all .25s;pointer-events:none}',
+    '.dn-toast.dn-toast-visible{opacity:1;transform:translateY(0)}',
+  ].join('\n');
+
+  function injectStyles() {
+    // Load Outfit + JetBrains Mono if not already present
+    if (!document.querySelector('link[href*="Outfit"]')) {
+      var preconnect = document.createElement('link');
+      preconnect.rel = 'preconnect';
+      preconnect.href = 'https://fonts.googleapis.com';
+      document.head.appendChild(preconnect);
+      var preconnect2 = document.createElement('link');
+      preconnect2.rel = 'preconnect';
+      preconnect2.href = 'https://fonts.gstatic.com';
+      preconnect2.crossOrigin = '';
+      document.head.appendChild(preconnect2);
+      var fonts = document.createElement('link');
+      fonts.rel = 'stylesheet';
+      fonts.href = 'https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap';
+      document.head.appendChild(fonts);
+    }
+    var s = document.createElement('style');
+    s.setAttribute('data-designer-notes', 'styles');
+    s.textContent = STYLES;
+    document.head.appendChild(s);
+  }
+
+  // =========================================================================
+  // SELECTOR ENGINE
+  // =========================================================================
+
+  var cssEscape = CSS.escape || function (s) { return s.replace(/([^\w-])/g, '\\$1'); };
+
+  function computeSelector(el) {
+    if (el.id) return '#' + cssEscape(el.id);
+    var parts = [], current = el;
+    while (current && current !== document.body && current !== document.documentElement) {
+      if (current.id) { parts.unshift('#' + cssEscape(current.id)); break; }
+      var seg = current.tagName.toLowerCase();
+      var cls = Array.from(current.classList || [])
+        .filter(function (c) { return !/^(ng-|css-|sc-|jsx-|_|svelte-|astro-|dn-)/.test(c); })
+        .slice(0, 2);
+      if (cls.length > 0) seg += '.' + cls.map(function (c) { return cssEscape(c); }).join('.');
+      var par = current.parentElement;
+      if (par) {
+        var sibs = Array.from(par.children).filter(function (s) { return s.tagName === current.tagName; });
+        if (sibs.length > 1) seg += ':nth-child(' + (Array.from(par.children).indexOf(current) + 1) + ')';
+      }
+      parts.unshift(seg);
+      current = current.parentElement;
+    }
+    if (!parts[0] || !parts[0].startsWith('#')) parts.unshift('body');
+    var sel = parts.join(' > ');
+    try { if (document.querySelector(sel) === el) return sel; } catch (e) {}
+    return fallbackSelector(el);
+  }
+
+  function fallbackSelector(el) {
+    var parts = [], current = el;
+    while (current && current !== document.body && current !== document.documentElement) {
+      var par = current.parentElement;
+      if (!par) break;
+      parts.unshift(current.tagName.toLowerCase() + ':nth-child(' + (Array.from(par.children).indexOf(current) + 1) + ')');
+      current = par;
+    }
+    parts.unshift('body');
+    return parts.join(' > ');
+  }
+
+  function getElementMeta(el) {
+    var rect = el.getBoundingClientRect();
+    var raw = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    var isContainer = el.children.length > 2;
+    var preview = raw;
+    if (isContainer && raw.length > 60) {
+      var fc = el.querySelector('h1,h2,h3,h4,h5,h6,p,a,button,span,label,td,li');
+      preview = fc ? (fc.textContent || '').replace(/\s+/g, ' ').trim().substring(0, 60) : raw.substring(0, 60);
+    } else {
+      preview = raw.substring(0, 80);
+    }
+    return {
+      tagName: el.tagName, textPreview: preview, isContainer: isContainer,
+      boundingBox: {
+        x: Math.round(rect.left + window.scrollX), y: Math.round(rect.top + window.scrollY),
+        width: Math.round(rect.width), height: Math.round(rect.height),
+      },
+    };
+  }
+
+  // =========================================================================
+  // PINS
+  // =========================================================================
+
+  var pinContainer = document.createElement('div');
+  pinContainer.setAttribute('data-designer-notes', 'pins');
+  pinContainer.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:2147483639;';
+
+  var DRAG_THRESHOLD = 3;
+
+  function renderPin(comment, animate, num) {
+    var pin = document.createElement('div');
+    pin.className = 'dn-pin' + (animate ? ' dn-pin-new' : '');
+    pin.setAttribute('data-designer-notes', 'pin');
+    pin.setAttribute('data-comment-id', comment.id);
+    pin.style.pointerEvents = 'auto';
+    pin.innerHTML = '<span>' + num + '</span>';
+
+    // Check if the target element is inside a sticky/fixed ancestor
+    var stickyParent = null;
+    try {
+      var targetEl = document.querySelector(comment.selector);
+      if (targetEl) stickyParent = getStickyAncestor(targetEl);
+    } catch (e) {}
+
+    if (stickyParent) {
+      // Place pin inside the sticky ancestor — it inherits sticky positioning
+      var parentRect = stickyParent.getBoundingClientRect();
+      pin.style.left = (comment.clickOffset.x + (comment.elementBounds ? comment.elementBounds.x - parentRect.left : 0) - 4) + 'px';
+      pin.style.top = (comment.clickOffset.y + (comment.elementBounds ? comment.elementBounds.y - parentRect.top : 0) - 28) + 'px';
+      // Use the target element's rect for more accurate positioning
+      try {
+        var targetRect = document.querySelector(comment.selector).getBoundingClientRect();
+        pin.style.left = (targetRect.left - parentRect.left + comment.clickOffset.x - 4) + 'px';
+        pin.style.top = (targetRect.top - parentRect.top + comment.clickOffset.y - 28) + 'px';
+      } catch (e) {}
+      pin.setAttribute('data-sticky', 'true');
+      stickyParent.style.position = stickyParent.style.position || window.getComputedStyle(stickyParent).position;
+      if (!stickyParent.style.overflow || stickyParent.style.overflow === 'hidden') {
+        stickyParent.style.overflow = 'visible';
+      }
+      stickyParent.appendChild(pin);
+    } else {
+      // Normal pin — absolute to page
+      pin.style.left = (comment.pagePosition.x - 4) + 'px';
+      pin.style.top = (comment.pagePosition.y - 28) + 'px';
+      pinContainer.appendChild(pin);
+    }
+
+    var dragState = null;
+
+    pin.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      hidePreview();
+      dragState = {
+        startX: e.pageX,
+        startY: e.pageY,
+        dragging: false,
+        origX: comment.pagePosition.x,
+        origY: comment.pagePosition.y,
+      };
+
+      function onMove(ev) {
+        if (!dragState) return;
+        var dx = ev.pageX - dragState.startX;
+        var dy = ev.pageY - dragState.startY;
+        if (!dragState.dragging && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+        dragState.dragging = true;
+        pin.classList.add('dn-pin-dragging');
+        var nx = dragState.origX + dx;
+        var ny = dragState.origY + dy;
+        pin.style.left = (nx - 4) + 'px';
+        pin.style.top = (ny - 28) + 'px';
+      }
+
+      function onUp(ev) {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (!dragState) return;
+        if (dragState.dragging) {
+          // Finalize drag — update comment position
+          var dx = ev.pageX - dragState.startX;
+          var dy = ev.pageY - dragState.startY;
+          pushUndo('move pin');
+          comment.pagePosition.x = dragState.origX + dx;
+          comment.pagePosition.y = dragState.origY + dy;
+          // Update clickOffset relative to the element if it still exists
+          try {
+            var el = document.querySelector(comment.selector);
+            if (el) {
+              var r = el.getBoundingClientRect();
+              comment.clickOffset.x = comment.pagePosition.x - (r.left + window.scrollX);
+              comment.clickOffset.y = comment.pagePosition.y - (r.top + window.scrollY);
+            }
+          } catch (ex) {}
+          saveState();
+          autoExport();
+          pin.classList.remove('dn-pin-dragging');
+          rerenderAllPins();
+          if (state.panelOpen) renderCommentList();
+          if (state.editingCommentId === comment.id) positionPopover(comment.id);
+        } else {
+          // Was a click, not a drag
+          if (state.editingCommentId === comment.id) closePopover();
+          else openPopover(comment.id);
+        }
+        dragState = null;
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    pin.addEventListener('mouseenter', function () {
+      if (state.editingCommentId !== comment.id) showPreview(comment, num);
+    });
+    pin.addEventListener('mouseleave', hidePreview);
+    // Pin already appended to stickyParent or pinContainer above
+  }
+
+  function rerenderAllPins() {
+    // Remove all pins — both from pinContainer and from sticky ancestors
+    pinContainer.innerHTML = '';
+    document.querySelectorAll('.dn-pin[data-sticky]').forEach(function (p) { p.remove(); });
+    pageComments().forEach(function (c, i) { renderPin(c, false, i + 1); });
+    updateEditingPinState();
+  }
+
+  function repositionAllPins() {
+    pageComments().forEach(function (c) {
+      try {
+        var el = document.querySelector(c.selector);
+        if (el) {
+          var r = el.getBoundingClientRect();
+          c.pagePosition.x = Math.round(r.left + window.scrollX + c.clickOffset.x);
+          c.pagePosition.y = Math.round(r.top + window.scrollY + c.clickOffset.y);
+          c.detached = false;
+        } else { c.detached = true; }
+      } catch (e) { c.detached = true; }
+    });
+    rerenderAllPins();
+    if (state.editingCommentId) positionPopover(state.editingCommentId);
+  }
+
+  // Find the nearest sticky/fixed ancestor (they create containing blocks for absolute children)
+  function getStickyAncestor(el) {
+    var node = el;
+    while (node && node !== document.body && node !== document.documentElement) {
+      var pos = window.getComputedStyle(node).position;
+      if (pos === 'sticky' || pos === 'fixed') return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function updateEditingPinState() {
+    document.querySelectorAll('.dn-pin[data-designer-notes]').forEach(function (pin) {
+      var id = parseInt(pin.getAttribute('data-comment-id'));
+      var c = state.comments.find(function (cm) { return cm.id === id; });
+      pin.classList.toggle('dn-pin-editing', id === state.editingCommentId);
+      pin.classList.toggle('dn-pin-detached', !!(c && c.detached));
+    });
+  }
+
+  // =========================================================================
+  // PREVIEW
+  // =========================================================================
+
+  var previewEl;
+  function createPreview() {
+    previewEl = document.createElement('div');
+    previewEl.className = 'dn-preview';
+    previewEl.setAttribute('data-designer-notes', 'preview');
+    document.body.appendChild(previewEl);
+  }
+
+  function showPreview(comment, num) {
+    var text = comment.text ? escapeHtml(comment.text) : '<span class="dn-preview-empty">No comment</span>';
+    previewEl.innerHTML = '<div class="dn-preview-number" data-designer-notes>Comment ' + num + '</div><div data-designer-notes>' + text + '</div>';
+    previewEl.style.left = (comment.pagePosition.x + 32) + 'px';
+    previewEl.style.top = (comment.pagePosition.y - 28) + 'px';
+    previewEl.classList.add('dn-preview-visible');
+  }
+
+  function hidePreview() { previewEl.classList.remove('dn-preview-visible'); }
+
+  // =========================================================================
+  // POPOVER — simple textarea + context + done/delete
+  // =========================================================================
+
+  var popoverEl;
+
+  function createPopover() {
+    popoverEl = document.createElement('div');
+    popoverEl.className = 'dn-popover';
+    popoverEl.setAttribute('data-designer-notes', 'popover');
+    popoverEl.innerHTML =
+      '<div class="dn-popover-header" data-designer-notes>' +
+        '<div class="dn-popover-context" data-designer-notes>' +
+          '<span class="dn-popover-tag" data-designer-notes></span>' +
+          '<span class="dn-popover-context-text" data-designer-notes></span>' +
+        '</div>' +
+        '<div class="dn-popover-toolbar" data-designer-notes>' +
+          '<div class="dn-popover-menu-wrap" data-designer-notes>' +
+            '<button class="dn-popover-more" data-designer-notes title="More options">' +
+              '<svg viewBox="0 0 24 24" data-designer-notes><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>' +
+            '</button>' +
+            '<div class="dn-popover-menu" data-designer-notes>' +
+              '<button class="dn-popover-copy-link dn-popover-menu-item" data-designer-notes>Copy link to comment</button>' +
+              '<button class="dn-popover-delete dn-popover-menu-item" data-designer-notes>Delete comment</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="dn-popover-toolbar-divider" data-designer-notes></div>' +
+          '<button class="dn-popover-close" data-designer-notes title="Close">' +
+            '<svg viewBox="0 0 24 24" data-designer-notes><path d="M18 6L6 18M6 6l12 12"/></svg>' +
+          '</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="dn-popover-body" data-designer-notes>' +
+        '<div class="dn-textarea-wrap" data-designer-notes>' +
+          '<div class="dn-textarea-highlight" data-designer-notes></div>' +
+          '<textarea class="dn-popover-textarea" data-designer-notes placeholder="What needs to change here?"></textarea>' +
+        '</div>' +
+      '</div>' +
+      '<div class="dn-skill-menu" data-designer-notes></div>' +
+
+      '<div class="dn-popover-footer" data-designer-notes>' +
+        '<div class="dn-popover-secondary" data-designer-notes>' +
+          '<button class="dn-popover-skills-btn dn-popover-sec-btn" data-designer-notes title="Insert skill command">' +
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" data-designer-notes><line x1="17" y1="4" x2="7" y2="20"/></svg>' +
+          '</button>' +
+          '<button class="dn-popover-directives-btn dn-popover-sec-btn" data-designer-notes title="Select model or effort">' +
+            '<svg viewBox="0 0 24 24" data-designer-notes><path d="M4 8h16M4 16h16M8 4v16M16 4v16"/></svg>' +
+          '</button>' +
+        '</div>' +
+        '<button class="dn-popover-submit" data-designer-notes title="Submit">' +
+          '<svg viewBox="0 0 24 24" data-designer-notes><path d="M12 19V5M5 12l7-7 7 7"/></svg>' +
+        '</button>' +
+      '</div>';
+
+    popoverEl.addEventListener('click', function (e) {
+      e.stopPropagation();
+      // Close menu if clicking outside it
+      if (!e.target.closest('.dn-popover-menu-wrap')) {
+        var m = popoverEl.querySelector('.dn-popover-menu');
+        if (m) m.classList.remove('dn-popover-menu-open');
+        var mb = popoverEl.querySelector('.dn-popover-more');
+        if (mb) mb.classList.remove('dn-popover-more-active');
+      }
+    });
+
+    popoverEl.querySelector('.dn-popover-close').addEventListener('click', function (e) {
+      e.stopPropagation(); closePopover();
+    });
+
+    popoverEl.querySelector('.dn-popover-submit').addEventListener('click', function (e) {
+      e.stopPropagation(); closePopover();
+    });
+
+    var menuEl = popoverEl.querySelector('.dn-popover-menu');
+    var moreBtn = popoverEl.querySelector('.dn-popover-more');
+    moreBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = menuEl.classList.toggle('dn-popover-menu-open');
+      moreBtn.classList.toggle('dn-popover-more-active', open);
+    });
+
+    popoverEl.querySelector('.dn-popover-copy-link').addEventListener('click', function (e) {
+      e.stopPropagation();
+      menuEl.classList.remove('dn-popover-menu-open');
+      moreBtn.classList.remove('dn-popover-more-active');
+      var c = state.comments.find(function (cm) { return cm.id === state.editingCommentId; });
+      if (c) {
+        var pagePath = c.page === 'index' ? '' : c.page;
+        var url = window.location.origin + '/' + pagePath + '#dn-' + c.id;
+        navigator.clipboard.writeText(url).then(function () { showToast('Link copied'); }).catch(function () { showToast('Copy failed'); });
+      }
+    });
+
+    popoverEl.querySelector('.dn-popover-delete').addEventListener('click', function (e) {
+      e.stopPropagation();
+      menuEl.classList.remove('dn-popover-menu-open');
+      moreBtn.classList.remove('dn-popover-more-active');
+      if (state.editingCommentId) {
+        var idToDelete = state.editingCommentId;
+        showConfirm('Are you sure you want to delete this comment?', function () {
+          deleteComment(idToDelete);
+        });
+      }
+    });
+
+    var textarea = popoverEl.querySelector('.dn-popover-textarea');
+    var autoMenu = popoverEl.querySelector('.dn-skill-menu');
+    var highlightEl = popoverEl.querySelector('.dn-textarea-highlight');
+    var autoActiveIndex = -1;
+    var autoTrigger = null; // '/' or '#' or null
+    var autoFromButton = false;
+    var autoButtonFilter = null; // 'model', 'effort', or null (show all)
+
+    function syncHighlight() {
+      updateHighlight(textarea.value, highlightEl);
+    }
+
+    // Find active trigger query by walking back from cursor
+    function getTriggerQuery() {
+      var val = textarea.value;
+      var pos = textarea.selectionStart;
+      for (var i = pos - 1; i >= 0; i--) {
+        if (val[i] === '/' || val[i] === '#') {
+          if (i === 0 || /\s/.test(val[i - 1])) {
+            return { start: i, trigger: val[i], query: val.substring(i + 1, pos).toLowerCase() };
+          }
+          return null;
+        }
+        if (/\s/.test(val[i])) return null;
+      }
+      return null;
+    }
+
+    function getItemsForTrigger(trigger, query) {
+      if (trigger === '/') {
+        return state.skills.filter(function (s) {
+          return HIDDEN_SKILL_NAMES.indexOf(s.name) === -1 && s.name.toLowerCase().indexOf(query) === 0;
+        });
+      }
+      if (trigger === '#') {
+        return state.directives.filter(function (d) {
+          var matchesQuery = d.name.toLowerCase().indexOf(query) === 0;
+          var matchesFilter = !autoButtonFilter || d.group === autoButtonFilter;
+          return matchesQuery && matchesFilter;
+        });
+      }
+      return [];
+    }
+
+    function positionAutoMenu() {
+      if (autoFromButton) {
+        // Below the popover, aligned right
+        autoMenu.style.top = '';
+        autoMenu.style.bottom = '';
+        autoMenu.style.left = '0';
+        autoMenu.style.right = '8px';
+        autoMenu.style.marginTop = '4px';
+        // Position just below the footer
+        var popH = popoverEl.offsetHeight;
+        autoMenu.style.top = (popH - 4) + 'px';
+      } else {
+        // Below cursor line inside textarea
+        var headerH = popoverEl.querySelector('.dn-popover-header').offsetHeight;
+        var style = window.getComputedStyle(textarea);
+        var lineHeight = parseInt(style.lineHeight) || parseInt(style.fontSize) * 1.4;
+        var val = textarea.value.substring(0, textarea.selectionStart);
+        var lines = val.split('\n').length;
+        autoMenu.style.top = (headerH + (lines * lineHeight) + 8) + 'px';
+        autoMenu.style.marginTop = '0';
+      }
+    }
+
+    function renderAutoMenu(trigger, query) {
+      var items = getItemsForTrigger(trigger, query);
+      if (items.length === 0) { closeAutoMenu(); return; }
+      autoTrigger = trigger;
+      autoMenu.innerHTML = '';
+
+      // Group directives by group header
+      var lastGroup = null;
+      items.forEach(function (item, i) {
+        if (trigger === '#' && item.group && item.group !== lastGroup) {
+          lastGroup = item.group;
+          var hdr = document.createElement('div');
+          hdr.className = 'dn-skill-group-hdr';
+          hdr.setAttribute('data-designer-notes', 'group-hdr');
+          hdr.textContent = item.group.charAt(0).toUpperCase() + item.group.slice(1);
+          autoMenu.appendChild(hdr);
+        }
+        var el = document.createElement('button');
+        el.className = 'dn-skill-item' + (i === autoActiveIndex ? ' dn-skill-active' : '');
+        el.setAttribute('data-designer-notes', 'skill-item');
+        el.setAttribute('data-item-name', item.name);
+        el.innerHTML =
+          '<span class="dn-skill-item-name" data-designer-notes>' + trigger + escapeHtml(item.name) + '</span>' +
+          '<span class="dn-skill-item-desc" data-designer-notes>' + escapeHtml(item.description) + '</span>';
+        el.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          selectAutoItem(item.name);
+        });
+        autoMenu.appendChild(el);
+      });
+      positionAutoMenu();
+      autoMenu.classList.add('dn-skill-menu-open');
+    }
+
+    function selectAutoItem(name) {
+      var tq = getTriggerQuery();
+      if (!tq) return;
+      var val = textarea.value;
+      textarea.value = val.substring(0, tq.start) + tq.trigger + name + ' ' + val.substring(textarea.selectionStart);
+      var newPos = tq.start + name.length + 2;
+      textarea.selectionStart = textarea.selectionEnd = newPos;
+      closeAutoMenu();
+      syncHighlight();
+      autoResizeTextarea(textarea);
+      textarea.focus();
+    }
+
+    function closeAutoMenu() {
+      autoMenu.classList.remove('dn-skill-menu-open');
+      autoActiveIndex = -1;
+      autoTrigger = null;
+      autoFromButton = false;
+      autoButtonFilter = null;
+      clearSecActive();
+    }
+
+    function openAutoMenuFromButton(trigger) {
+      autoFromButton = true;
+      var pos = textarea.selectionStart;
+      var val = textarea.value;
+      var prefix = (pos > 0 && !/\s/.test(val[pos - 1])) ? ' ' + trigger : trigger;
+      textarea.value = val.substring(0, pos) + prefix + val.substring(pos);
+      var newPos = pos + prefix.length;
+      textarea.selectionStart = textarea.selectionEnd = newPos;
+      textarea.focus();
+      autoActiveIndex = 0;
+      renderAutoMenu(trigger, '');
+    }
+
+    textarea.addEventListener('input', function () {
+      autoResizeTextarea(textarea);
+      syncHighlight();
+      autoFromButton = false;
+      autoButtonFilter = null;
+      var tq = getTriggerQuery();
+      if (tq) {
+        autoActiveIndex = 0;
+        renderAutoMenu(tq.trigger, tq.query);
+      } else {
+        closeAutoMenu();
+      }
+    });
+
+    textarea.addEventListener('keydown', function (e) {
+      var menuOpen = autoMenu.classList.contains('dn-skill-menu-open');
+      var items = menuOpen ? autoMenu.querySelectorAll('.dn-skill-item') : [];
+
+      if (menuOpen && items.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          autoActiveIndex = Math.min(autoActiveIndex + 1, items.length - 1);
+          var tq = getTriggerQuery();
+          if (tq) renderAutoMenu(tq.trigger, tq.query);
+          var ai = autoMenu.querySelector('.dn-skill-active');
+          if (ai) ai.scrollIntoView({ block: 'nearest' });
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          autoActiveIndex = Math.max(autoActiveIndex - 1, 0);
+          var tq2 = getTriggerQuery();
+          if (tq2) renderAutoMenu(tq2.trigger, tq2.query);
+          var ai2 = autoMenu.querySelector('.dn-skill-active');
+          if (ai2) ai2.scrollIntoView({ block: 'nearest' });
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          var active = items[autoActiveIndex] || items[0];
+          if (active) selectAutoItem(active.getAttribute('data-item-name'));
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault(); e.stopPropagation();
+          closeAutoMenu();
+          return;
+        }
+      }
+
+      if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault(); closePopover();
+      }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePopover(); }
+    });
+
+    var skillsBtn = popoverEl.querySelector('.dn-popover-skills-btn');
+    var directivesBtn = popoverEl.querySelector('.dn-popover-directives-btn');
+    var allSecBtns = [skillsBtn, directivesBtn];
+
+    function clearSecActive() {
+      allSecBtns.forEach(function (b) { b.classList.remove('dn-sec-active'); });
+    }
+
+    function handleSecBtn(btn, trigger, filterGroup) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (autoFromButton && btn.classList.contains('dn-sec-active')) {
+          closeAutoMenu();
+        } else {
+          clearSecActive(); btn.classList.add('dn-sec-active');
+          autoButtonFilter = filterGroup || null;
+          openAutoMenuFromButton(trigger);
+        }
+      });
+    }
+
+    handleSecBtn(skillsBtn, '/', null);
+    handleSecBtn(directivesBtn, '#', null);
+
+    document.body.appendChild(popoverEl);
+  }
+
+  function openPopover(commentId) {
+    hidePreview();
+    var c = state.comments.find(function (cm) { return cm.id === commentId; });
+    if (!c) return;
+    state.editingCommentId = commentId;
+    popoverEl.querySelector('.dn-popover-tag').textContent = c.tagName;
+    popoverEl.querySelector('.dn-popover-context-text').textContent = c.textPreview || '';
+    var textarea = popoverEl.querySelector('.dn-popover-textarea');
+    textarea.value = c.text;
+    textarea.style.height = 'auto';
+    // Sync highlight overlay
+    var hl = popoverEl.querySelector('.dn-textarea-highlight');
+    if (hl) updateHighlight(textarea.value, hl);
+    // Resize to fit content
+    setTimeout(function () { autoResizeTextarea(textarea); }, 0);
+    // Hide delete on brand-new comments (no text yet)
+    popoverEl.querySelector('.dn-popover-delete').style.display = c.text.trim() ? '' : 'none';
+    // Close menu if left open from previous comment
+    popoverEl.querySelector('.dn-popover-menu').classList.remove('dn-popover-menu-open');
+    popoverEl.querySelector('.dn-popover-more').classList.remove('dn-popover-more-active');
+    popoverEl.classList.remove('dn-popover-exit');
+    popoverEl.classList.add('dn-popover-visible', 'dn-popover-enter');
+    positionPopover(commentId);
+    updateEditingPinState();
+    setTimeout(function () { textarea.focus(); }, 50);
+  }
+
+  function positionPopover(commentId) {
+    var c = state.comments.find(function (cm) { return cm.id === commentId; });
+    if (!c) return;
+    var px = c.pagePosition.x, py = c.pagePosition.y;
+    popoverEl.style.left = (px + 356 > window.scrollX + window.innerWidth ? px - 328 : px + 36) + 'px';
+    popoverEl.style.top = (py - 28) + 'px';
+  }
+
+  function closePopover() {
+    if (!state.editingCommentId) return;
+    var id = state.editingCommentId;
+    var c = state.comments.find(function (cm) { return cm.id === id; });
+    if (c) {
+      c.text = popoverEl.querySelector('.dn-popover-textarea').value;
+      if (!c.text.trim()) {
+        // Empty → discard
+        state.comments = state.comments.filter(function (cm) { return cm.id !== id; });
+      }
+      saveState();
+      autoExport();
+    }
+    state.editingCommentId = null;
+    popoverEl.classList.remove('dn-popover-enter');
+    popoverEl.classList.add('dn-popover-exit');
+    clearTimeout(popoverEl._hideTimer);
+    popoverEl._hideTimer = setTimeout(function () {
+      if (!state.editingCommentId) {
+        popoverEl.classList.remove('dn-popover-visible', 'dn-popover-exit');
+      }
+    }, 150);
+    rerenderAllPins();
+    updateBadge();
+    if (state.panelOpen) renderCommentList();
+  }
+
+  // =========================================================================
+  // PANEL
+  // =========================================================================
+
+  var panelEl, commentListEl;
+
+  var expandedRowId = null;
+
+  function createPanel() {
+    panelEl = document.createElement('div');
+    panelEl.className = 'dn-panel';
+    panelEl.setAttribute('data-designer-notes', 'panel');
+    panelEl.innerHTML =
+      '<div class="dn-panel-header" data-designer-notes>' +
+        '<h2 class="dn-panel-title" data-designer-notes>Comments <span class="dn-comment-count" data-designer-notes></span></h2>' +
+        '<div class="dn-panel-header-actions" data-designer-notes>' +
+          '<button class="dn-panel-settings" data-designer-notes title="Settings">' +
+            '<svg viewBox="0 0 24 24" data-designer-notes><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' +
+          '</button>' +
+          '<a class="dn-panel-changelog" href="/.designer-notes/changelog.html" target="_blank" data-designer-notes title="View changelog">' +
+            '<svg viewBox="0 0 24 24" data-designer-notes><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
+          '</a>' +
+          '<button class="dn-panel-copy" data-designer-notes title="Copy as text">' +
+            '<svg viewBox="0 0 24 24" data-designer-notes><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>' +
+          '</button>' +
+          '<button class="dn-panel-close" data-designer-notes title="Close panel">' +
+            '<svg viewBox="0 0 24 24" data-designer-notes><path d="M18 6L6 18M6 6l12 12"/></svg>' +
+          '</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="dn-comment-list" data-designer-notes></div>';
+
+    panelEl.querySelector('.dn-panel-close').addEventListener('click', closePanel);
+    panelEl.querySelector('.dn-panel-settings').addEventListener('click', showSettings);
+    panelEl.querySelector('.dn-panel-copy').addEventListener('click', function () {
+      copyToClipboard();
+    });
+    commentListEl = panelEl.querySelector('.dn-comment-list');
+
+    // Panel-level shared autocomplete menu
+    var panelSkillMenu = document.createElement('div');
+    panelSkillMenu.className = 'dn-panel-skill-menu';
+    panelSkillMenu.setAttribute('data-designer-notes', 'panel-skill-menu');
+    panelEl.appendChild(panelSkillMenu);
+
+    // Panel autocomplete state
+    var panelAutoTrigger = null;
+    var panelAutoActiveIndex = -1;
+    var panelAutoTargetRow = null; // { ta, commentId }
+
+    function getPanelItemsForTrigger(trigger, query) {
+      if (trigger === '/') {
+        return state.skills.filter(function (s) {
+          return HIDDEN_SKILL_NAMES.indexOf(s.name) === -1 && s.name.toLowerCase().indexOf(query) === 0;
+        });
+      }
+      if (trigger === '#') {
+        return state.directives.filter(function (d) {
+          return d.name.toLowerCase().indexOf(query) === 0;
+        });
+      }
+      return [];
+    }
+
+    function renderPanelAutoMenu(trigger, query) {
+      var items = getPanelItemsForTrigger(trigger, query);
+      if (items.length === 0) { closePanelAutoMenu(); return; }
+      panelAutoTrigger = trigger;
+      panelSkillMenu.innerHTML = '';
+
+      var lastGroup = null;
+      items.forEach(function (item, idx) {
+        if (trigger === '#' && item.group && item.group !== lastGroup) {
+          lastGroup = item.group;
+          var hdr = document.createElement('div');
+          hdr.className = 'dn-skill-group-hdr';
+          hdr.setAttribute('data-designer-notes', 'group-hdr');
+          hdr.textContent = item.group.charAt(0).toUpperCase() + item.group.slice(1);
+          panelSkillMenu.appendChild(hdr);
+        }
+        var el = document.createElement('button');
+        el.className = 'dn-skill-item' + (idx === panelAutoActiveIndex ? ' dn-skill-active' : '');
+        el.setAttribute('data-designer-notes', 'skill-item');
+        el.setAttribute('data-item-name', item.name);
+        el.innerHTML =
+          '<span class="dn-skill-item-name" data-designer-notes>' + trigger + escapeHtml(item.name) + '</span>' +
+          '<span class="dn-skill-item-desc" data-designer-notes>' + escapeHtml(item.description) + '</span>';
+        el.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          selectPanelAutoItem(item.name);
+        });
+        panelSkillMenu.appendChild(el);
+      });
+
+      // Position: just below the actions bar within the panel
+      positionPanelAutoMenu();
+      panelSkillMenu.classList.add('dn-skill-menu-open');
+    }
+
+    function positionPanelAutoMenu() {
+      if (!panelAutoTargetRow) return;
+      var actionsEl = panelAutoTargetRow.ta.closest('.dn-row-expand-body').querySelector('.dn-row-actions');
+      var wrap = panelAutoTargetRow.ta.closest('.dn-row-textarea-wrap');
+      if (!actionsEl || !wrap) return;
+      var panelRect = panelEl.getBoundingClientRect();
+      var actionsRect = actionsEl.getBoundingClientRect();
+      var wrapRect = wrap.getBoundingClientRect();
+      // Below the actions bar, aligned with textarea edges
+      panelSkillMenu.style.top = (actionsRect.bottom - panelRect.top + panelEl.scrollTop + 4) + 'px';
+      panelSkillMenu.style.left = (wrapRect.left - panelRect.left) + 'px';
+      panelSkillMenu.style.right = (panelRect.right - wrapRect.right) + 'px';
+      panelSkillMenu.style.bottom = '';
+    }
+
+    function selectPanelAutoItem(name) {
+      if (!panelAutoTargetRow) return;
+      var ta = panelAutoTargetRow.ta;
+      var commentId = panelAutoTargetRow.commentId;
+      var val = ta.value;
+      var pos = ta.selectionStart;
+      // Find trigger position by walking back from cursor
+      var triggerStart = -1;
+      for (var i = pos - 1; i >= 0; i--) {
+        if (val[i] === panelAutoTrigger) {
+          if (i === 0 || /\s/.test(val[i - 1])) { triggerStart = i; break; }
+          break;
+        }
+        if (/\s/.test(val[i])) break;
+      }
+      if (triggerStart === -1) { closePanelAutoMenu(); return; }
+      ta.value = val.substring(0, triggerStart) + panelAutoTrigger + name + ' ' + val.substring(pos);
+      var newPos = triggerStart + name.length + 2;
+      ta.selectionStart = ta.selectionEnd = newPos;
+      closePanelAutoMenu();
+      autoResizeTextarea(ta);
+      // Update highlight overlay
+      var hlEl = ta.closest('.dn-row-textarea-wrap') && ta.closest('.dn-row-textarea-wrap').querySelector('.dn-row-textarea-highlight');
+      if (hlEl) updateHighlight(ta.value, hlEl);
+      // Persist the change
+      var c = state.comments.find(function (cm) { return cm.id === commentId; });
+      if (c) {
+        c.text = ta.value;
+        saveState();
+        autoExport();
+      }
+      ta.focus();
+    }
+
+    function closePanelAutoMenu() {
+      panelSkillMenu.classList.remove('dn-skill-menu-open');
+      panelSkillMenu.innerHTML = '';
+      panelAutoTrigger = null;
+      panelAutoActiveIndex = -1;
+      // Clear active state on all row sec buttons — walk up to the expand body
+      if (panelAutoTargetRow) {
+        var expandBody = panelAutoTargetRow.ta.closest('.dn-row-expand-body');
+        if (expandBody) {
+          expandBody.querySelectorAll('.dn-row-btn').forEach(function (b) { b.classList.remove('dn-sec-active'); });
+        }
+      }
+      panelAutoTargetRow = null;
+    }
+
+    // Expose panel autocomplete helpers so renderCommentList can wire buttons
+    panelEl._panelAuto = {
+      open: function (trigger, ta, commentId, btn) {
+        // If same button clicked again, close
+        if (panelAutoTrigger === trigger && panelAutoTargetRow && panelAutoTargetRow.ta === ta && panelSkillMenu.classList.contains('dn-skill-menu-open')) {
+          closePanelAutoMenu();
+          return;
+        }
+        closePanelAutoMenu();
+        panelAutoTargetRow = { ta: ta, commentId: commentId };
+        panelAutoActiveIndex = 0;
+        // Insert trigger char into textarea
+        var pos = ta.selectionStart;
+        var val = ta.value;
+        var prefix = (pos > 0 && !/\s/.test(val[pos - 1])) ? ' ' + trigger : trigger;
+        ta.value = val.substring(0, pos) + prefix + val.substring(pos);
+        var newPos = pos + prefix.length;
+        ta.selectionStart = ta.selectionEnd = newPos;
+        ta.focus();
+        // Mark button active
+        if (btn) btn.classList.add('dn-sec-active');
+        renderPanelAutoMenu(trigger, '');
+      },
+      close: closePanelAutoMenu,
+      handleKeydown: function (e) {
+        if (!panelSkillMenu.classList.contains('dn-skill-menu-open')) return false;
+        var items = panelSkillMenu.querySelectorAll('.dn-skill-item');
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          panelAutoActiveIndex = Math.min(panelAutoActiveIndex + 1, items.length - 1);
+          renderPanelAutoMenu(panelAutoTrigger, '');
+          var ai = panelSkillMenu.querySelector('.dn-skill-active');
+          if (ai) ai.scrollIntoView({ block: 'nearest' });
+          return true;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          panelAutoActiveIndex = Math.max(panelAutoActiveIndex - 1, 0);
+          renderPanelAutoMenu(panelAutoTrigger, '');
+          var ai2 = panelSkillMenu.querySelector('.dn-skill-active');
+          if (ai2) ai2.scrollIntoView({ block: 'nearest' });
+          return true;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          var active = items[panelAutoActiveIndex] || items[0];
+          if (active) selectPanelAutoItem(active.getAttribute('data-item-name'));
+          return true;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault(); e.stopPropagation();
+          closePanelAutoMenu();
+          return true;
+        }
+        return false;
+      },
+    };
+
+    // Close panel menu on outside click
+    document.addEventListener('click', function (e) {
+      if (!panelSkillMenu.classList.contains('dn-skill-menu-open')) return;
+      if (!e.target.closest('[data-designer-notes="panel-skill-menu"]') &&
+          !e.target.closest('.dn-row-skills-btn') &&
+          !e.target.closest('.dn-row-directives-btn')) {
+        closePanelAutoMenu();
+      }
+    }, false);
+
+    document.body.appendChild(panelEl);
+  }
+
+  function openPanel() { state.panelOpen = true; panelEl.classList.add('dn-panel-open'); renderCommentList(); }
+  function closePanel() {
+    collapseExpandedRow();
+    state.panelOpen = false;
+    panelEl.classList.remove('dn-panel-open');
+    rerenderAllPins();
+    updateBadge();
+  }
+
+  function collapseExpandedRow() {
+    if (!expandedRowId) return;
+    // Close panel autocomplete if open
+    if (panelEl && panelEl._panelAuto) panelEl._panelAuto.close();
+    var oldRow = commentListEl.querySelector('.dn-row-expanded');
+    if (oldRow) {
+      var ta = oldRow.querySelector('.dn-row-textarea');
+      if (ta) {
+        var c = state.comments.find(function (cm) { return cm.id === expandedRowId; });
+        if (c) {
+          c.text = ta.value;
+          if (!c.text.trim()) {
+            state.comments = state.comments.filter(function (cm) { return cm.id !== expandedRowId; });
+          }
+          saveState();
+          autoExport();
+        }
+      }
+    }
+    expandedRowId = null;
+  }
+
+  function expandRow(commentId) {
+    if (expandedRowId === commentId) return;
+    collapseExpandedRow();
+    expandedRowId = commentId;
+    renderCommentList();
+    // Focus the textarea in the expanded row
+    var ta = commentListEl.querySelector('.dn-row-expanded .dn-row-textarea');
+    if (ta) setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  function renderCommentList() {
+    var all = state.comments;
+    // Restore panel title when returning from settings
+    var titleEl = panelEl.querySelector('.dn-panel-title');
+    var comingFromSettings = titleEl && titleEl.textContent === 'Settings';
+    if (comingFromSettings) {
+      titleEl.innerHTML = 'Comments <span class="dn-comment-count" data-designer-notes></span>';
+    }
+    panelEl.querySelector('.dn-comment-count').textContent = all.length > 0 ? '(' + all.length + ')' : '';
+
+    if (all.length === 0) {
+      commentListEl.innerHTML =
+        '<div class="dn-empty" data-designer-notes>' +
+          '<svg viewBox="0 0 24 24" data-designer-notes><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' +
+          '<p data-designer-notes>No comments yet.<br>Press <strong>C</strong> to enter comment mode.</p>' +
+        '</div>';
+      // Animate in from left when returning from settings
+      if (comingFromSettings) {
+        commentListEl.style.transform = 'translateX(-12px)';
+        commentListEl.style.opacity = '0';
+        requestAnimationFrame(function () {
+          commentListEl.style.transform = '';
+          commentListEl.style.opacity = '';
+        });
+      }
+      return;
+    }
+
+    commentListEl.innerHTML = '';
+    var pages = {};
+    all.forEach(function (c) { if (!pages[c.page]) pages[c.page] = []; pages[c.page].push(c); });
+
+    Object.keys(pages).forEach(function (page) {
+      var hdr = document.createElement('div');
+      hdr.className = 'dn-page-group';
+      hdr.setAttribute('data-designer-notes', 'group');
+      hdr.textContent = page;
+      commentListEl.appendChild(hdr);
+
+      pages[page].forEach(function (comment, i) {
+        var isCurrent = (page === currentPage());
+        var isExpanded = (comment.id === expandedRowId);
+        var row = document.createElement('div');
+        row.className = 'dn-comment-row' + (isExpanded ? ' dn-row-expanded' : '');
+        row.setAttribute('data-designer-notes', 'row');
+        row.setAttribute('tabindex', '0');
+
+        var text = comment.text
+          ? '<span class="dn-row-text" data-designer-notes>' + escapeHtml(comment.text) + '</span>'
+          : '<span class="dn-row-text-empty" data-designer-notes>No comment</span>';
+
+        var badge = !isCurrent ? '<span class="dn-row-page-badge" data-designer-notes>other page</span>' : '';
+
+        var expandBody = '<div class="dn-row-expand-body" data-designer-notes>' +
+          '<div class="dn-row-textarea-wrap" data-designer-notes>' +
+            '<div class="dn-row-textarea-highlight" data-designer-notes></div>' +
+            '<textarea class="dn-row-textarea" data-designer-notes placeholder="What needs to change here?">' + escapeHtml(comment.text) + '</textarea>' +
+          '</div>' +
+          '<div class="dn-row-actions" data-designer-notes>' +
+            '<div class="dn-row-secondary" data-designer-notes>' +
+              '<button class="dn-row-skills-btn dn-row-btn" data-designer-notes title="Insert skill command">' +
+                '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" data-designer-notes><line x1="17" y1="4" x2="7" y2="20"/></svg>' +
+              '</button>' +
+              '<button class="dn-row-directives-btn dn-row-btn" data-designer-notes title="Select model or effort">' +
+                '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-designer-notes><path d="M4 8h16M4 16h16M8 4v16M16 4v16"/></svg>' +
+              '</button>' +
+            '</div>' +
+            '<div class="dn-row-primary" data-designer-notes>' +
+              '<button class="dn-row-done dn-row-btn" data-designer-notes title="Done">' +
+                '<svg viewBox="0 0 24 24" data-designer-notes><polyline points="20 6 9 17 4 12"/></svg>' +
+              '</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+        row.innerHTML =
+          '<div class="dn-row-number" data-designer-notes>' + (i + 1) + '</div>' +
+          '<div class="dn-row-content" data-designer-notes>' +
+            '<button class="dn-row-delete dn-row-btn" data-designer-notes title="Delete">' +
+              '<svg viewBox="0 0 24 24" data-designer-notes><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 10v8M14 10v8"/></svg>' +
+            '</button>' +
+            '<div class="dn-row-meta" data-designer-notes>' +
+              '<span class="dn-row-tag" data-designer-notes>' + comment.tagName + '</span>' +
+              '<span class="dn-row-time" data-designer-notes>' + relativeTime(comment.timestamp) + '</span>' +
+              badge +
+            '</div>' +
+            text +
+            expandBody +
+          '</div>';
+
+        if (isCurrent) {
+          // Click row header area to expand/scroll
+          row.addEventListener('click', function (e) {
+            // Don't trigger on clicks inside the expand body (textarea, buttons)
+            if (e.target.closest('.dn-row-expand-body')) return;
+            // Don't trigger on delete button
+            if (e.target.closest('.dn-row-delete')) return;
+            scrollToComment(comment.id);
+            expandRow(comment.id);
+          });
+
+          // Delete button wired for all current-page rows — with confirm dialog
+          row.querySelector('.dn-row-delete').addEventListener('click', function (e) {
+            e.stopPropagation();
+            showConfirm('Are you sure you want to delete this comment?', function () {
+              var panelAuto = panelEl._panelAuto;
+              if (panelAuto) panelAuto.close();
+              expandedRowId = null;
+              deleteComment(comment.id);
+            });
+          });
+
+          // Wire up expanded row controls
+          if (isExpanded) {
+            var ta = row.querySelector('.dn-row-textarea');
+            var hlEl = row.querySelector('.dn-row-textarea-highlight');
+            var panelAuto = panelEl._panelAuto;
+            // Initialize highlight
+            updateHighlight(ta.value, hlEl);
+            ta.addEventListener('input', function () {
+              comment.text = ta.value;
+              autoResizeTextarea(ta);
+              updateHighlight(ta.value, hlEl);
+              saveState();
+              autoExport();
+            });
+            autoResizeTextarea(ta);
+            ta.addEventListener('keydown', function (e) {
+              // Let panel autocomplete handle keys first
+              if (panelAuto && panelAuto.handleKeydown(e)) return;
+              if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                e.preventDefault();
+                collapseExpandedRow();
+                renderCommentList();
+                rerenderAllPins();
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                collapseExpandedRow();
+                renderCommentList();
+                rerenderAllPins();
+              }
+            });
+            // Skills button
+            row.querySelector('.dn-row-skills-btn').addEventListener('click', function (e) {
+              e.stopPropagation();
+              if (panelAuto) panelAuto.open('/', ta, comment.id, this);
+            });
+            // Directives button
+            row.querySelector('.dn-row-directives-btn').addEventListener('click', function (e) {
+              e.stopPropagation();
+              if (panelAuto) panelAuto.open('#', ta, comment.id, this);
+            });
+            row.querySelector('.dn-row-done').addEventListener('click', function (e) {
+              e.stopPropagation();
+              if (panelAuto) panelAuto.close();
+              collapseExpandedRow();
+              renderCommentList();
+              rerenderAllPins();
+            });
+          }
+        } else {
+          row.style.cursor = 'default';
+        }
+        commentListEl.appendChild(row);
+      });
+    });
+
+    // Animate in from left when returning from settings
+    if (comingFromSettings) {
+      commentListEl.style.transform = 'translateX(-12px)';
+      commentListEl.style.opacity = '0';
+      requestAnimationFrame(function () {
+        commentListEl.style.transform = '';
+        commentListEl.style.opacity = '';
+      });
+    }
+  }
+
+  function scrollToComment(id) {
+    var c = state.comments.find(function (cm) { return cm.id === id; });
+    if (!c) return;
+    try {
+      var el = document.querySelector(c.selector);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      else window.scrollTo({ top: c.pagePosition.y - window.innerHeight / 2, behavior: 'smooth' });
+    } catch (e) {
+      window.scrollTo({ top: c.pagePosition.y - window.innerHeight / 2, behavior: 'smooth' });
+    }
+  }
+
+  function deleteComment(id) {
+    pushUndo('delete comment');
+    closePopover();
+    state.comments = state.comments.filter(function (cm) { return cm.id !== id; });
+    saveState();
+    autoExport();
+    rerenderAllPins();
+    if (state.panelOpen) renderCommentList();
+    updateBadge();
+  }
+
+  // =========================================================================
+  // INTERACTION HANDLERS
+  // =========================================================================
+
+  var toggleBtn, badgeEl;
+
+  function createToggle() {
+    toggleBtn = document.createElement('button');
+    toggleBtn.className = 'dn-toggle';
+    toggleBtn.setAttribute('data-designer-notes', 'toggle');
+    toggleBtn.setAttribute('title', 'Open comment panel');
+    toggleBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" data-designer-notes><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' +
+      '<span class="dn-badge" data-designer-notes data-count="0"></span>';
+    badgeEl = toggleBtn.querySelector('.dn-badge');
+    toggleBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!state.critMode) {
+        // First click: enter crit mode
+        toggleCritMode();
+      } else if (state.panelOpen) {
+        closePanel();
+      } else {
+        openPanel();
+      }
+    });
+    document.body.appendChild(toggleBtn);
+  }
+
+  function toggleCritMode() {
+    state.critMode = !state.critMode;
+    document.body.classList.toggle('dn-crit-mode', state.critMode);
+    toggleBtn.classList.toggle('dn-active', state.critMode);
+    if (!state.critMode) closePopover();
+  }
+
+  function updateBadge() {
+    var count = pageComments().length;
+    badgeEl.textContent = count > 0 ? count : '';
+    badgeEl.setAttribute('data-count', count);
+  }
+
+  function isTyping() {
+    var el = document.activeElement;
+    return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
+  }
+
+  function handleCritClick(e) {
+    if (!state.critMode) return;
+    if (e.target.closest('[data-designer-notes]')) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    if (state.editingCommentId) { closePopover(); return; }
+
+    var target = e.target;
+    var selector = computeSelector(target);
+    var meta = getElementMeta(target);
+    var rect = target.getBoundingClientRect();
+
+    var nearestChild = null;
+    if (meta.isContainer) {
+      var children = target.querySelectorAll('*');
+      var cx = e.clientX, cy = e.clientY, best = Infinity;
+      children.forEach(function (child) {
+        if (child.children.length > 2 || child.hasAttribute('data-designer-notes')) return;
+        var cr = child.getBoundingClientRect();
+        if (!cr.width || !cr.height) return;
+        var d = Math.hypot(cx - (cr.left + cr.width / 2), cy - (cr.top + cr.height / 2));
+        if (d < best) {
+          best = d;
+          nearestChild = {
+            tagName: child.tagName,
+            text: (child.textContent || '').replace(/\s+/g, ' ').trim().substring(0, 60),
+            selector: computeSelector(child),
+          };
+        }
+      });
+    }
+
+    var comment = {
+      id: state.nextId++,
+      text: '',
+      page: currentPage(),
+      selector: selector,
+      tagName: meta.tagName,
+      textPreview: meta.textPreview,
+      isContainer: meta.isContainer,
+      nearestChild: nearestChild,
+      elementRect: meta.boundingBox,
+      clickOffset: { x: e.clientX - rect.left, y: e.clientY - rect.top },
+      pagePosition: { x: Math.round(e.pageX), y: Math.round(e.pageY) },
+      timestamp: new Date().toISOString(),
+      detached: false,
+    };
+
+    pushUndo('add comment');
+    state.comments.push(comment);
+    saveState();
+    renderPin(comment, true, pageComments().length);
+    updateBadge();
+    openPopover(comment.id);
+    if (state.panelOpen) renderCommentList();
+  }
+
+  function handleKeydown(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === '.') {
+      e.preventDefault(); toggleUIVisibility(); return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey && !isTyping()) {
+      e.preventDefault(); undo(); return;
+    }
+    if (e.key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTyping()) {
+      e.preventDefault(); toggleCritMode(); return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+      e.preventDefault(); toggleCritMode(); return;
+    }
+    if (e.key === 'Escape') {
+      if (state.editingCommentId) closePopover();
+      else if (state.critMode) toggleCritMode();
+      else if (state.panelOpen) closePanel();
+    }
+  }
+
+  function handleDocumentClick(e) {
+    if (state.editingCommentId && !e.target.closest('[data-designer-notes]')) closePopover();
+  }
+
+  var repositionTimer;
+  function handleReposition() {
+    clearTimeout(repositionTimer);
+    repositionTimer = setTimeout(repositionAllPins, 150);
+  }
+
+  // =========================================================================
+  // EXPORT
+  // =========================================================================
+
+  function generateMarkdown() {
+    var dateStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    var all = state.comments;
+    var md = '# UI Feedback\nGenerated: ' + dateStr + '\nTotal comments: ' + all.length + '\n\n---\n';
+
+    var pages = {};
+    all.forEach(function (c) { if (!pages[c.page]) pages[c.page] = []; pages[c.page].push(c); });
+
+    var n = 0;
+    Object.keys(pages).forEach(function (page) {
+      md += '\n## Page: ' + page + '\n\n';
+      pages[page].forEach(function (c) {
+        n++;
+        md += '### Comment ' + n + '\n';
+        md += '**Element:** `' + c.selector + '`\n';
+        md += '**Tag:** ' + c.tagName + (c.isContainer ? ' (container)' : '');
+        if (c.textPreview) md += ' | **Text:** "' + c.textPreview + '"';
+        md += '\n';
+        if (c.nearestChild) {
+          md += '**Nearest child:** `' + c.nearestChild.selector + '` (' + c.nearestChild.tagName + ': "' + c.nearestChild.text + '")\n';
+        }
+        md += '**Position:** click at (' + c.pagePosition.x + ', ' + c.pagePosition.y + ') on page; offset (' + Math.round(c.clickOffset.x) + ', ' + Math.round(c.clickOffset.y) + ') within element\n';
+        md += '**Element bounds:** ' + c.elementRect.width + 'x' + c.elementRect.height + ' at (' + c.elementRect.x + ', ' + c.elementRect.y + ')\n';
+        md += c.text ? '\n> ' + c.text.replace(/\n/g, '\n> ') + '\n' : '\n> *(Element flagged for attention)*\n';
+        md += '\n---\n';
+      });
+    });
+
+    md += '\n*Exported by designer-notes*\n';
+    return md;
+  }
+
+  function copyToClipboard() {
+    if (state.comments.length === 0) { showToast('No comments to copy'); return; }
+    var md = generateMarkdown();
+    navigator.clipboard.writeText(md).then(function () {
+      showToast('Copied ' + state.comments.length + ' comments');
+    }).catch(function () {
+      var ta = document.createElement('textarea');
+      ta.value = md; ta.style.cssText = 'position:fixed;left:-9999px';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      showToast('Copied');
+    });
+  }
+
+  // =========================================================================
+  // INIT
+  // =========================================================================
+
+  function init() {
+    injectStyles();
+    loadState();
+    detectServer();
+    document.body.appendChild(pinContainer);
+    createToggle();
+    createPreview();
+    createPopover();
+    createPanel();
+    rerenderAllPins();
+    updateBadge();
+
+    document.addEventListener('click', handleCritClick, true);
+    document.addEventListener('click', handleDocumentClick, false);
+    document.addEventListener('keydown', handleKeydown, false);
+    window.addEventListener('resize', handleReposition, false);
+    window.addEventListener('scroll', handleReposition, true);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
