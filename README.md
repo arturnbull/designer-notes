@@ -2,6 +2,8 @@
 
 Pin comments to HTML elements, just like Figma. Then hand off to Claude Code to apply the changes.
 
+Learn more at [arturnbull.github.io/designer-notes-landing-page](https://arturnbull.github.io/designer-notes-landing-page/)
+
 ## Install
 
 ```bash
