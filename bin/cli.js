@@ -12,7 +12,7 @@ var TOOLS_SOURCE = path.join(__dirname, '..');
 var CLAUDE_DIR = path.join(os.homedir(), '.claude');
 var SKILLS_DEST = path.join(CLAUDE_DIR, 'skills');
 
-var TOOL_FILES = ['designer-notes.js', 'serve.js', 'changelog-template.html'];
+var TOOL_FILES = ['designer-notes.js', 'serve.js', 'setup.js', 'hook.sh', 'changelog-template.html'];
 var SKILL_DIRS = ['designer-notes', 'submit-feedback'];
 
 // ── Parse args ──────────────────────────────────────────────
@@ -145,13 +145,21 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
+// Make hook.sh executable
+try {
+  fs.chmodSync(path.join(toolDest, 'hook.sh'), 0o755);
+} catch (e) { /* non-critical */ }
+
 console.log([
   '',
   '  Done! Next steps:',
   '',
   '    1. Open Claude Code in any project',
-  '    2. Run /designer-notes to wire up your HTML page',
-  '    3. Press C to start commenting',
+  '    2. Run /designer-notes <project-path> to set up',
+  '    3. Press C to start commenting in the browser',
   '    4. Run /submit-feedback to apply your notes',
+  '',
+  '  Optional: Add the PreToolUse hook for automatic setup.',
+  '  See ~/.claude/skills/designer-notes/hook.sh for details.',
   ''
 ].join('\n'));

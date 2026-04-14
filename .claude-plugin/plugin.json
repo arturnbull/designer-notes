@@ -1,6 +1,6 @@
 {
   "name": "designer-notes",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Figma-style feedback commenting for AI-generated UI. Pin comments to HTML elements in the browser, then hand off structured feedback to Claude Code for implementation.",
   "author": {
     "name": "Andrew Turnbull",

@@ -194,6 +194,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Serve designer-notes.js from skill directory (regardless of project path)
+  if (req.url.split('?')[0] === '/designer-notes.js') {
+    const dnPath = path.join(__dirname, 'designer-notes.js');
+    fs.readFile(dnPath, (err, data) => {
+      if (err) { res.writeHead(404); res.end('Not found'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/javascript' });
+      res.end(data);
+    });
+    return;
+  }
+
   // Static file serving
   let filePath = req.url === '/' ? '/index.html' : req.url.split('?')[0];
   filePath = path.resolve(projectPath, filePath.replace(/^\//, ''));

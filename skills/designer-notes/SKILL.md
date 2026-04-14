@@ -2,76 +2,68 @@
 name: designer-notes
 description: Wire designer-notes into the current project — adds the script tag, starts the dev server, and opens in browser for Figma-style feedback commenting
 user-invocable: true
-argument-hint: "[filename.html]"
+argument-hint: "<project-path> [filename.html]"
 ---
 
 # Designer Notes
 
 Set up the designer-notes feedback tool in the current project so the user can leave spatially-anchored comments on generated UI.
 
-## Step 0: Locate tool files
+## What the hook handles automatically
 
-The tool files (`designer-notes.js` and `serve.js`) should be in `~/.claude/skills/designer-notes/`. Check if they exist:
+A `PreToolUse` hook runs `setup.js` before this skill executes. It deterministically handles:
+- **Tool file check** — verifies `designer-notes.js` and `serve.js` exist in `~/.claude/skills/designer-notes/`
+- **Script injection** — finds HTML files and injects `<script src="...">` before `</body>` (skips if already present)
+- **Server startup** — starts `serve.js` on port 3847 (auto-increments if in use), or detects an existing server
+- **Changelog** — creates `.designer-notes/changelog.html` if it doesn't exist
 
-```bash
-ls ~/.claude/skills/designer-notes/designer-notes.js ~/.claude/skills/designer-notes/serve.js
+The hook passes its results as a JSON `systemMessage`. Parse it to understand what happened.
+
+## What this skill handles
+
+### Step 1: Read the hook results
+
+The hook output (in the system message) is JSON with this shape:
+```json
+{
+  "projectDir": "/path/to/project",
+  "toolFilesPresent": true,
+  "htmlFiles": [
+    { "file": "index.html", "status": "injected", "scriptSrc": "../../.claude/skills/..." },
+    { "file": "about.html", "status": "already-present" }
+  ],
+  "server": { "status": "started", "port": 3847, "url": "http://localhost:3847" },
+  "changelog": { "status": "already-exists" },
+  "config": { "exists": true, "preferences": { "autoApply": false, "defaultModel": "sonnet" } }
+}
 ```
 
-**If both files exist**, continue to Step 1.
+If no project path was provided (hook message says "no project path provided"), ask the user which project directory to set up. Then run setup.js manually:
+```bash
+node ~/.claude/skills/designer-notes/setup.js <project-dir> [filename.html]
+```
 
-**If files are missing**, try to install them automatically:
+If `toolFilesPresent` is false, tell the user to install: `npx designer-notes@latest`
 
-1. First, try npx:
-   ```bash
-   npx designer-notes@latest
-   ```
-2. If npx fails (no Node.js, no npm), try downloading from GitHub:
-   ```bash
-   mkdir -p ~/.claude/skills/designer-notes ~/.claude/skills/submit-feedback
-   curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/designer-notes.js -o ~/.claude/skills/designer-notes/designer-notes.js
-   curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/serve.js -o ~/.claude/skills/designer-notes/serve.js
-   curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/skills/designer-notes/SKILL.md -o ~/.claude/skills/designer-notes/SKILL.md
-   curl -fsSL https://raw.githubusercontent.com/arturnbull/designer-notes/main/skills/submit-feedback/SKILL.md -o ~/.claude/skills/submit-feedback/SKILL.md
-   ```
-3. If both methods fail, tell the user: "designer-notes tool files are missing. Install with `npx designer-notes` or download from https://github.com/arturnbull/designer-notes"
+If any HTML file has `status: "no-body-tag"`, warn the user.
 
-**Do not proceed until both files are confirmed present.**
+### Step 2: First-run config (only if `config.exists` is false)
 
-## Step 1: Find target HTML files
+If no `dn-config.json` exists yet, ask the user two questions:
 
-If an argument is provided, use that filename. Otherwise, search the current working directory for `*.html` files (non-recursive first, then recursive if none found).
+1. **Auto-apply edits?** — Should `/submit-feedback` apply changes without asking for confirmation? (Default: no)
+2. **Default model?** — Which model should process feedback comments by default? (opus / sonnet / haiku, default: sonnet)
 
-If multiple HTML files found, list them and ask which one(s) to set up. Accept "all" to add to every file.
-
-## Step 2: Add the script tag
-
-For each target file:
-- Check if `designer-notes.js` is already referenced. If yes, skip and report "already set up."
-- Create a symlink to `designer-notes.js` in the project root (if one doesn't already exist):
-  ```bash
-  ln -sf ~/.claude/skills/designer-notes/designer-notes.js [project-directory]/designer-notes.js
-  ```
-  If the symlink fails (e.g., Windows or unsupported filesystem), copy the file instead:
-  ```bash
-  cp ~/.claude/skills/designer-notes/designer-notes.js [project-directory]/designer-notes.js
-  ```
-- Insert `<script src="designer-notes.js"></script>` just before the closing `</body>` tag. If the file has no `</body>` tag, insert before `</html>` or append to the end of the file.
-- If the project has a `.gitignore`, add `designer-notes.js` to it (so the symlink/copy isn't committed).
-- Report what was added.
-
-## Step 3: Generate dn-config.json
-
-Scan for available skills and write a config file to the project directory:
+Then generate `dn-config.json` in the project directory:
 - Scan `~/.claude/skills/` for directories containing `SKILL.md`
 - Scan the project's `.claude/skills/` if it exists
 - For each skill, read the frontmatter to extract `name` and `description`
 - Only include skills where `user-invocable` is `true` (or not set, since default is true)
-- Write `dn-config.json` to the project directory with this structure:
+- Write the config:
   ```json
   {
     "skills": [
-      { "name": "arrange", "description": "Improve layout and spacing" },
-      { "name": "animate", "description": "Add purposeful animations" }
+      { "name": "arrange", "description": "Improve layout and spacing" }
     ],
     "directives": [
       { "name": "opus", "description": "Use Opus model (most capable)", "group": "model" },
@@ -82,47 +74,43 @@ Scan for available skills and write a config file to the project directory:
       { "name": "low-effort", "description": "Quick pass", "group": "effort" }
     ],
     "preferences": {
-      "defaultModel": "sonnet",
+      "defaultModel": "<user's choice>",
       "availableModels": ["opus", "sonnet", "haiku"],
       "defaultEffort": "medium-effort",
-      "autoApply": false,
+      "autoApply": <user's choice>,
       "showUI": true,
       "hideToggleButton": false
     }
   }
   ```
-- If `dn-config.json` already exists, merge — update the skills list but preserve any existing preferences.
 
-## Step 4: Start the dev server
+If config already exists, skip this step entirely.
 
-First check if a designer-notes server is already running for this project:
-```bash
-curl -s http://localhost:3847/server-info 2>/dev/null
-```
-If it returns a response with the correct `projectPath`, use that server. If not, start a new one:
+### Step 2b: First-run onboarding (only if config was just created in Step 2)
 
-```bash
-node ~/.claude/skills/designer-notes/serve.js [project-directory] &
-```
+If you just created the config (first run for this project), display this onboarding message exactly (replacing `{url}` with the actual server URL + filename):
 
-The server defaults to port 3847 but auto-increments if that port is in use (tries up to 10 ports). Read the server output to see which port it chose.
+> **designer-notes is ready.** Here's how it works:
+>
+> 1. **Open {url}** in your browser
+> 2. **Press C** to comment — click any element to pin your feedback
+> 3. **Come back here** and run `/submit-feedback` when you're ready to apply changes
+>
+> Comments save automatically as you go. Nothing to export.
 
-The server:
-- Serves the project's HTML files
-- Accepts POST `/save-feedback` to write feedback markdown to the project folder
-- Serves GET `/config` with the skills list from `dn-config.json`
-- The script auto-detects the server and uses it for saving
+This is the only time this message should appear — on subsequent runs, skip it.
 
-## Step 5: Open in browser
+### Step 3: Open in browser
 
-Open at `http://localhost:[port]/[filename.html]` using the port from the server output (NOT as a file:// URL — the server is required for saving feedback).
+Open at the server URL from the hook results (e.g., `http://localhost:3847/index.html`). Use the first HTML file from the hook results, or the argument if provided.
 
-## Step 6: Report the setup
+### Step 4: Report
 
-- Which files were wired up
-- Server URL
-- Where feedback files will be saved
-- Remind: press `C` to enter comment mode, click to place pins, Enter to submit a comment, click the blue circle button to open the panel
+Tell the user:
+- Which files have the script tag (from hook results)
+- Server URL and port
+- Where feedback files will save
+- Remind: press `C` to enter comment mode, click to place pins, Enter to submit, click the blue circle to open the panel
 
 ## How the feedback workflow works
 
