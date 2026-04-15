@@ -170,6 +170,45 @@ if (installClaude) {
     try {
       fs.chmodSync(path.join(claudeToolDest, 'hook.sh'), 0o755);
     } catch (e) { /* non-critical */ }
+
+    // Wire PreToolUse hook into settings.json
+    var settingsPath = path.join(CLAUDE_DIR, 'settings.json');
+    var hookCommand = 'bash ~/.claude/skills/designer-notes/hook.sh';
+    try {
+      var settings = {};
+      if (fileExists(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      }
+      if (!settings.hooks) settings.hooks = {};
+      if (!Array.isArray(settings.hooks.PreToolUse)) settings.hooks.PreToolUse = [];
+
+      // Check if our hook is already registered
+      var alreadyRegistered = settings.hooks.PreToolUse.some(function (entry) {
+        return entry.matcher === 'Skill' && Array.isArray(entry.hooks) &&
+          entry.hooks.some(function (h) { return h.command === hookCommand; });
+      });
+
+      if (!alreadyRegistered) {
+        settings.hooks.PreToolUse.push({
+          matcher: 'Skill',
+          hooks: [
+            {
+              type: 'command',
+              command: hookCommand,
+              timeout: 15,
+              statusMessage: 'Setting up designer-notes...'
+            }
+          ]
+        });
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+        console.log('  \u2713 PreToolUse hook registered in settings.json');
+      } else {
+        console.log('  \u2713 PreToolUse hook already registered');
+      }
+    } catch (e) {
+      errors.push('settings.json hook: ' + e.message);
+      console.log('  \u2717 Failed to register hook in settings.json: ' + e.message);
+    }
   }
 }
 
