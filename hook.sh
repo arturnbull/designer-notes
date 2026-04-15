@@ -4,8 +4,8 @@
 
 INPUT=$(cat)
 
-# Extract skill name, cwd, and args from tool_input
-eval "$(echo "$INPUT" | node -e "
+# Extract skill name, cwd, and args from tool_input via temp file (no eval)
+PARSED=$(echo "$INPUT" | node -e "
   let d = '';
   process.stdin.on('data', c => d += c);
   process.stdin.on('end', () => {
@@ -14,12 +14,14 @@ eval "$(echo "$INPUT" | node -e "
       const skill = j.tool_input && j.tool_input.skill || '';
       const cwd = j.cwd || '';
       const args = (j.tool_input && j.tool_input.args || '').trim();
-      console.log('SKILL=' + JSON.stringify(skill));
-      console.log('CWD=' + JSON.stringify(cwd));
-      console.log('ARGS=' + JSON.stringify(args));
-    } catch { console.log('SKILL=\"\"'); console.log('CWD=\"\"'); console.log('ARGS=\"\"'); }
+      console.log(JSON.stringify({ skill, cwd, args }));
+    } catch { console.log(JSON.stringify({ skill: '', cwd: '', args: '' })); }
   });
-")"
+")
+
+SKILL=$(echo "$PARSED" | node -e "process.stdin.on('data',d=>{console.log(JSON.parse(d).skill)})")
+CWD=$(echo "$PARSED" | node -e "process.stdin.on('data',d=>{console.log(JSON.parse(d).cwd)})")
+ARGS=$(echo "$PARSED" | node -e "process.stdin.on('data',d=>{console.log(JSON.parse(d).args)})")
 
 # Pass through for non-designer-notes skills
 if [ "$SKILL" != "designer-notes" ]; then
@@ -59,7 +61,7 @@ if [ ! -d "$PROJECT_DIR" ]; then
 fi
 
 # Run setup
-RESULT=$(node ~/.claude/skills/designer-notes/setup.js "$PROJECT_DIR" $FILE_ARG 2>&1)
+RESULT=$(node ~/.claude/skills/designer-notes/setup.js "$PROJECT_DIR" "$FILE_ARG" 2>&1)
 
 node -e "
   const result = process.argv[1];

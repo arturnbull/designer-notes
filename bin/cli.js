@@ -41,18 +41,88 @@ if (args.includes('--help') || args.includes('-h')) {
     '  Install skills and commands for designer-notes.',
     '',
     '  Usage:',
-    '    npx designer-notes           Auto-detect editor and install',
-    '    npx designer-notes --claude   Install for Claude Code only',
-    '    npx designer-notes --cursor   Install for Cursor only',
-    '    npx designer-notes --force    Overwrite existing install',
-    '    npx designer-notes --version  Show version',
-    '    npx designer-notes --help     Show this help',
+    '    npx designer-notes              Auto-detect editor and install',
+    '    npx designer-notes --claude      Install for Claude Code only',
+    '    npx designer-notes --cursor      Install for Cursor only',
+    '    npx designer-notes --force       Overwrite existing install',
+    '    npx designer-notes --uninstall   Remove files and hook',
+    '    npx designer-notes --version     Show version',
+    '    npx designer-notes --help        Show this help',
     '',
     '  Claude Code: files installed to ~/.claude/skills/',
     '  Cursor: tool files to ~/.cursor/designer-notes/,',
     '          commands to <project>/.cursor/commands/',
     ''
   ].join('\n'));
+  process.exit(0);
+}
+
+// ── Uninstall ────────────────────────────────────────────────
+
+if (args.includes('--uninstall')) {
+  console.log('\n  designer-notes v' + VERSION + ' — uninstalling\n');
+  var uninstallErrors = [];
+
+  // Remove Claude Code skills and tools
+  var claudeSkillDir = path.join(os.homedir(), '.claude', 'skills', 'designer-notes');
+  var claudeSubmitDir = path.join(os.homedir(), '.claude', 'skills', 'submit-feedback');
+  [claudeSkillDir, claudeSubmitDir].forEach(function (dir) {
+    if (fs.existsSync(dir)) {
+      try {
+        fs.rmSync(dir, { recursive: true });
+        console.log('  \u2713 Removed ' + dir);
+      } catch (e) {
+        uninstallErrors.push(e.message);
+        console.log('  \u2717 Failed to remove ' + dir + ': ' + e.message);
+      }
+    }
+  });
+
+  // Remove hook from settings.json
+  var settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+  var hookCommand = 'bash ~/.claude/skills/designer-notes/hook.sh';
+  try {
+    if (fs.existsSync(settingsPath)) {
+      var settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      if (settings.hooks && Array.isArray(settings.hooks.PreToolUse)) {
+        var before = settings.hooks.PreToolUse.length;
+        settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter(function (entry) {
+          if (entry.matcher !== 'Skill' || !Array.isArray(entry.hooks)) return true;
+          return !entry.hooks.some(function (h) { return h.command === hookCommand; });
+        });
+        if (settings.hooks.PreToolUse.length < before) {
+          // Clean up empty hook arrays
+          if (settings.hooks.PreToolUse.length === 0) delete settings.hooks.PreToolUse;
+          if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+          fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+          console.log('  \u2713 Removed hook from settings.json');
+        } else {
+          console.log('  \u2713 No hook found in settings.json (already clean)');
+        }
+      }
+    }
+  } catch (e) {
+    uninstallErrors.push(e.message);
+    console.log('  \u2717 Failed to update settings.json: ' + e.message);
+  }
+
+  // Remove Cursor files
+  var cursorDest = path.join(os.homedir(), '.cursor', 'designer-notes');
+  if (fs.existsSync(cursorDest)) {
+    try {
+      fs.rmSync(cursorDest, { recursive: true });
+      console.log('  \u2713 Removed ' + cursorDest);
+    } catch (e) {
+      uninstallErrors.push(e.message);
+      console.log('  \u2717 Failed to remove ' + cursorDest + ': ' + e.message);
+    }
+  }
+
+  if (uninstallErrors.length > 0) {
+    console.log('\n  Uninstall completed with ' + uninstallErrors.length + ' error(s).\n');
+    process.exit(1);
+  }
+  console.log('\n  Uninstalled successfully.\n');
   process.exit(0);
 }
 
@@ -110,6 +180,7 @@ if (installClaude) {
 
   // Check if already installed
   var claudeInstalled = dirExists(path.join(SKILLS_DEST, 'designer-notes'));
+  var skipFileCopy = false;
   if (claudeInstalled && !force) {
     var versionFile = path.join(SKILLS_DEST, 'designer-notes', '.version');
     var installedVersion = fileExists(versionFile)
@@ -117,18 +188,14 @@ if (installClaude) {
       : 'unknown';
 
     if (installedVersion === VERSION) {
-      console.log('  Claude Code: already installed (v' + VERSION + ').');
-      if (!installCursor) {
-        console.log('  Run with --force to reinstall.\n');
-        process.exit(0);
-      }
+      console.log('  Claude Code: files already installed (v' + VERSION + ').');
+      skipFileCopy = true;
     } else {
       console.log('  Claude Code: updating v' + installedVersion + ' → v' + VERSION + '...\n');
-      claudeInstalled = false; // proceed with install
     }
   }
 
-  if (!claudeInstalled || force) {
+  if (!skipFileCopy) {
     console.log('  Installing for Claude Code...');
 
     if (!dirExists(SKILLS_DEST)) {
@@ -170,15 +237,25 @@ if (installClaude) {
     try {
       fs.chmodSync(path.join(claudeToolDest, 'hook.sh'), 0o755);
     } catch (e) { /* non-critical */ }
+  }
 
-    // Wire PreToolUse hook into settings.json
-    var settingsPath = path.join(CLAUDE_DIR, 'settings.json');
-    var hookCommand = 'bash ~/.claude/skills/designer-notes/hook.sh';
-    try {
-      var settings = {};
-      if (fileExists(settingsPath)) {
-        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  // Wire PreToolUse hook into settings.json (always runs, even if files were already installed)
+  var settingsPath = path.join(CLAUDE_DIR, 'settings.json');
+  var hookCommand = 'bash ~/.claude/skills/designer-notes/hook.sh';
+  try {
+    var settings = {};
+    if (fileExists(settingsPath)) {
+      var raw = fs.readFileSync(settingsPath, 'utf8');
+      try {
+        settings = JSON.parse(raw);
+      } catch (parseErr) {
+        console.log('  \u2717 ~/.claude/settings.json has a syntax error — cannot register hook.');
+        console.log('    Fix the JSON manually, then re-run: npx designer-notes --force');
+        errors.push('settings.json: invalid JSON — ' + parseErr.message);
+        settings = null;
       }
+    }
+    if (settings !== null) {
       if (!settings.hooks) settings.hooks = {};
       if (!Array.isArray(settings.hooks.PreToolUse)) settings.hooks.PreToolUse = [];
 
@@ -195,7 +272,7 @@ if (installClaude) {
             {
               type: 'command',
               command: hookCommand,
-              timeout: 15,
+              timeout: 30,
               statusMessage: 'Setting up designer-notes...'
             }
           ]
@@ -205,10 +282,10 @@ if (installClaude) {
       } else {
         console.log('  \u2713 PreToolUse hook already registered');
       }
-    } catch (e) {
-      errors.push('settings.json hook: ' + e.message);
-      console.log('  \u2717 Failed to register hook in settings.json: ' + e.message);
     }
+  } catch (e) {
+    errors.push('settings.json hook: ' + e.message);
+    console.log('  \u2717 Failed to register hook in settings.json: ' + e.message);
   }
 }
 
