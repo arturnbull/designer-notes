@@ -12,6 +12,7 @@
     "designer-notes.js",
     "serve.js",
     "setup.js",
+    "check-update.js",
     "hook.sh",
     "changelog-template.html",
     "cursor/",

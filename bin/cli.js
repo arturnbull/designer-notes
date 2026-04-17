@@ -12,19 +12,19 @@ var TOOLS_SOURCE = path.join(__dirname, '..');
 var CLAUDE_DIR = path.join(os.homedir(), '.claude');
 var SKILLS_DEST = path.join(CLAUDE_DIR, 'skills');
 
-var TOOL_FILES = ['designer-notes.js', 'serve.js', 'setup.js', 'hook.sh', 'changelog-template.html'];
+var TOOL_FILES = ['designer-notes.js', 'serve.js', 'setup.js', 'hook.sh', 'changelog-template.html', 'check-update.js'];
 var SKILL_DIRS = ['designer-notes', 'submit-feedback'];
 
 // Cursor-specific paths
 var CURSOR_DIR = path.join(os.homedir(), '.cursor');
 var CURSOR_DEST = path.join(CURSOR_DIR, 'designer-notes');
-var CURSOR_TOOL_FILES = ['designer-notes.js', 'serve.js', 'setup.js', 'changelog-template.html'];
+var CURSOR_TOOL_FILES = ['designer-notes.js', 'serve.js', 'setup.js', 'changelog-template.html', 'check-update.js'];
 var CURSOR_COMMANDS_SOURCE = path.join(__dirname, '..', 'cursor', 'commands');
 
 // Codex-specific paths
 var CODEX_AGENTS_DIR = path.join(os.homedir(), '.agents');
 var CODEX_SKILLS_DEST = path.join(CODEX_AGENTS_DIR, 'skills');
-var CODEX_TOOL_FILES = ['designer-notes.js', 'serve.js', 'setup.js', 'changelog-template.html'];
+var CODEX_TOOL_FILES = ['designer-notes.js', 'serve.js', 'setup.js', 'changelog-template.html', 'check-update.js'];
 var CODEX_SKILLS_SOURCE = path.join(__dirname, '..', 'codex', 'skills');
 
 // ── Parse args ──────────────────────────────────────────────
