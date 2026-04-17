@@ -1,7 +1,7 @@
 {
   "name": "designer-notes",
   "version": "1.5.0",
-  "description": "Figma-style feedback commenting for AI-generated UI. Pin comments to HTML elements, then hand off to Claude Code or Cursor for implementation.",
+  "description": "Figma-style feedback commenting for AI-generated UI. Pin comments to HTML elements, then hand off to Claude Code, Cursor, or Codex for implementation.",
   "bin": {
     "designer-notes": "bin/cli.js"
   },
@@ -12,13 +12,14 @@
     "designer-notes.js",
     "serve.js",
     "setup.js",
-    "setup-cursor.js",
     "hook.sh",
     "changelog-template.html",
-    "cursor/"
+    "cursor/",
+    "codex/"
   ],
   "keywords": [
     "claude-code",
+    "codex",
     "design-feedback",
     "ui-review",
     "commenting",
