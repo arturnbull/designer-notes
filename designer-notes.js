@@ -217,8 +217,8 @@
     var titleEl = panelEl.querySelector('.dn-panel-title');
     if (titleEl) titleEl.textContent = 'Settings';
 
-    var models = (state.preferences.availableModels || ['opus', 'sonnet', 'haiku']);
-    var currentModel = state.preferences.defaultModel || 'sonnet';
+    var models = (state.preferences.availableModels || []);
+    var currentModel = state.preferences.defaultModel || '';
     var efforts = ['high-effort', 'medium-effort', 'low-effort'];
     var currentEffort = state.preferences.defaultEffort || 'medium-effort';
 
@@ -329,7 +329,7 @@
     var newPrefs = {
       defaultModel: selectedModel.dataset.value,
       defaultEffort: selectedEffort.dataset.value,
-      availableModels: state.preferences.availableModels || ['opus', 'sonnet', 'haiku'],
+      availableModels: state.preferences.availableModels || [],
       autoApply: autoApplyCheck ? autoApplyCheck.checked : true,
       hideToggleButton: showToggleCheck ? !showToggleCheck.checked : false,
       showUI: state.preferences.showUI,
