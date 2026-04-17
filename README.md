@@ -1,6 +1,6 @@
 # designer-notes
 
-Pin comments to HTML elements, just like Figma. Then hand off to Claude Code or Cursor to apply the changes.
+Pin comments to HTML elements, just like Figma. Then hand off to Claude Code, Cursor, or Codex to apply the changes.
 
 Learn more at [arturnbull.github.io/designer-notes-landing-page](https://arturnbull.github.io/designer-notes-landing-page/)
 
@@ -21,6 +21,14 @@ npx designer-notes --cursor
 ```
 
 This installs tool files to `~/.cursor/designer-notes/` and slash commands to your project's `.cursor/commands/` directory. Cursor support is experimental — the core commenting workflow works, but Claude Code-specific features (model directives, skill invocations, parallel processing) are not available.
+
+### Codex CLI (experimental)
+
+```bash
+npx designer-notes --codex
+```
+
+This installs skill files to `~/.agents/skills/` for use with OpenAI's Codex CLI. Codex support is experimental — setup runs inline from the skill prompt (no hooks), and model directives map to OpenAI models (`#o3`, `#gpt-4o`, `#o4-mini`).
 
 ### Update
 
@@ -96,7 +104,7 @@ Then restart Claude Code.
 
 ## Requirements
 
-- [Claude Code](https://claude.ai/code) or [Cursor](https://cursor.com)
+- [Claude Code](https://claude.ai/code), [Cursor](https://cursor.com), or [Codex CLI](https://github.com/openai/codex)
 - Node.js 14+ (for the dev server)
 - Any modern browser
 
@@ -111,6 +119,11 @@ Cursor:
 ```bash
 rm -rf ~/.cursor/designer-notes
 rm .cursor/commands/designer-notes.md .cursor/commands/submit-feedback.md
+```
+
+Codex:
+```bash
+rm -rf ~/.agents/skills/designer-notes ~/.agents/skills/submit-feedback
 ```
 
 ## Links
