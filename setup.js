@@ -12,12 +12,27 @@ const path = require('path');
 const http = require('http');
 const { execSync, spawn } = require('child_process');
 
-const SKILL_DIR = path.join(process.env.HOME, '.claude', 'skills', 'designer-notes');
+const platformFlag = process.argv.find(a => a.startsWith('--platform='));
+const platform = platformFlag ? platformFlag.split('=')[1] : (process.argv.includes('--platform') ? process.argv[process.argv.indexOf('--platform') + 1] : 'claude');
+
+const SKILL_DIRS = {
+  claude: path.join(process.env.HOME, '.claude', 'skills', 'designer-notes'),
+  cursor: path.join(process.env.HOME, '.cursor', 'designer-notes'),
+  codex: path.join(process.env.HOME, '.agents', 'skills', 'designer-notes'),
+};
+const SKILL_DIR = SKILL_DIRS[platform] || SKILL_DIRS.claude;
 const DEFAULT_PORT = 3847;
 const MAX_PORT_ATTEMPTS = 10;
 
-const projectDir = process.argv[2];
-const targetFile = process.argv[3]; // optional specific filename
+const rawArgs = process.argv.slice(2);
+const platformIdx = rawArgs.indexOf('--platform');
+const positionalArgs = rawArgs.filter(function (a, i) {
+  if (a.startsWith('--')) return false;
+  if (platformIdx >= 0 && i === platformIdx + 1) return false;
+  return true;
+});
+const projectDir = positionalArgs[0];
+const targetFile = positionalArgs[1];
 
 if (!projectDir) {
   console.error(JSON.stringify({ error: 'No project directory provided' }));

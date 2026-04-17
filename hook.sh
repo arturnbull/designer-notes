@@ -61,7 +61,7 @@ if [ ! -d "$PROJECT_DIR" ]; then
 fi
 
 # Run setup
-RESULT=$(node ~/.claude/skills/designer-notes/setup.js "$PROJECT_DIR" "$FILE_ARG" 2>&1)
+RESULT=$(node ~/.claude/skills/designer-notes/setup.js --platform claude "$PROJECT_DIR" "$FILE_ARG" 2>&1)
 
 node -e "
   const result = process.argv[1];

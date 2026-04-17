@@ -7,7 +7,7 @@ Set up the designer-notes feedback tool so the user can leave spatially-anchored
 Run the setup script in the terminal. Use the workspace root as the project directory:
 
 ```bash
-node ~/.cursor/designer-notes/setup-cursor.js "<project-directory>"
+node ~/.cursor/designer-notes/setup.js --platform cursor "<project-directory>"
 ```
 
 If the user specified a particular HTML file, pass it as a second argument.

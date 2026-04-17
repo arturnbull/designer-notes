@@ -40,7 +40,7 @@ The hook output (in the system message) is JSON with this shape:
 
 If no project path was provided (hook message says "no project path provided"), ask the user which project directory to set up. Then run setup.js manually:
 ```bash
-node ~/.claude/skills/designer-notes/setup.js <project-dir> [filename.html]
+node ~/.claude/skills/designer-notes/setup.js --platform claude <project-dir> [filename.html]
 ```
 
 If `toolFilesPresent` is false, tell the user to install: `npx designer-notes@latest`
