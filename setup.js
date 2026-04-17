@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { execSync, spawn } = require('child_process');
+const https = require('https');
 
 const platformFlag = process.argv.find(a => a.startsWith('--platform='));
 const platform = platformFlag ? platformFlag.split('=')[1] : (process.argv.includes('--platform') ? process.argv[process.argv.indexOf('--platform') + 1] : 'claude');
@@ -21,6 +22,10 @@ const SKILL_DIRS = {
   codex: path.join(process.env.HOME, '.agents', 'skills', 'designer-notes'),
 };
 const SKILL_DIR = SKILL_DIRS[platform] || SKILL_DIRS.claude;
+const VERSION_FILE = path.join(SKILL_DIR, '.version');
+const INSTALLED_VERSION = (() => {
+  try { return fs.readFileSync(VERSION_FILE, 'utf8').trim(); } catch { return null; }
+})();
 const DEFAULT_PORT = 3847;
 const MAX_PORT_ATTEMPTS = 10;
 
@@ -217,6 +222,31 @@ function checkConfig() {
   return { exists: false };
 }
 
+function checkForUpdate() {
+  if (!INSTALLED_VERSION) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const req = https.get('https://registry.npmjs.org/designer-notes/latest', {
+      headers: { 'Accept': 'application/json' },
+      timeout: 2000,
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const latest = JSON.parse(data).version;
+          if (latest && latest !== INSTALLED_VERSION) {
+            resolve({ installed: INSTALLED_VERSION, latest, command: 'npx designer-notes@latest --force' });
+          } else {
+            resolve(null);
+          }
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -228,6 +258,9 @@ async function main() {
     changelog: {},
     config: {},
   };
+
+  // Fire update check early (non-blocking, 2s timeout)
+  const updateCheck = checkForUpdate();
 
   // 1. Check tool files exist
   const jsFile = path.join(SKILL_DIR, 'designer-notes.js');
@@ -262,6 +295,10 @@ async function main() {
 
   // 5. Config check
   result.config = checkConfig();
+
+  // 6. Update check (non-blocking)
+  const update = await updateCheck;
+  if (update) result.update = update;
 
   console.log(JSON.stringify(result));
 }
