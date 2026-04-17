@@ -18,8 +18,14 @@ var SKILL_DIRS = ['designer-notes', 'submit-feedback'];
 // Cursor-specific paths
 var CURSOR_DIR = path.join(os.homedir(), '.cursor');
 var CURSOR_DEST = path.join(CURSOR_DIR, 'designer-notes');
-var CURSOR_TOOL_FILES = ['designer-notes.js', 'serve.js', 'setup-cursor.js', 'changelog-template.html'];
+var CURSOR_TOOL_FILES = ['designer-notes.js', 'serve.js', 'setup.js', 'changelog-template.html'];
 var CURSOR_COMMANDS_SOURCE = path.join(__dirname, '..', 'cursor', 'commands');
+
+// Codex-specific paths
+var CODEX_AGENTS_DIR = path.join(os.homedir(), '.agents');
+var CODEX_SKILLS_DEST = path.join(CODEX_AGENTS_DIR, 'skills');
+var CODEX_TOOL_FILES = ['designer-notes.js', 'serve.js', 'setup.js', 'changelog-template.html'];
+var CODEX_SKILLS_SOURCE = path.join(__dirname, '..', 'codex', 'skills');
 
 // ── Parse args ──────────────────────────────────────────────
 
@@ -27,6 +33,7 @@ var args = process.argv.slice(2);
 var force = args.includes('--force') || args.includes('-f');
 var cursorOnly = args.includes('--cursor');
 var claudeOnly = args.includes('--claude');
+var codexOnly = args.includes('--codex');
 
 if (args.includes('--version') || args.includes('-v')) {
   console.log(VERSION);
@@ -44,6 +51,7 @@ if (args.includes('--help') || args.includes('-h')) {
     '    npx designer-notes              Auto-detect editor and install',
     '    npx designer-notes --claude      Install for Claude Code only',
     '    npx designer-notes --cursor      Install for Cursor only',
+    '    npx designer-notes --codex       Install for Codex CLI only',
     '    npx designer-notes --force       Overwrite existing install',
     '    npx designer-notes --uninstall   Remove files and hook',
     '    npx designer-notes --version     Show version',
@@ -52,6 +60,7 @@ if (args.includes('--help') || args.includes('-h')) {
     '  Claude Code: files installed to ~/.claude/skills/',
     '  Cursor: tool files to ~/.cursor/designer-notes/,',
     '          commands to <project>/.cursor/commands/',
+    '  Codex: skill files to ~/.agents/skills/',
     ''
   ].join('\n'));
   process.exit(0);
@@ -118,6 +127,21 @@ if (args.includes('--uninstall')) {
     }
   }
 
+  // Remove Codex skill files
+  var codexSkillDir = path.join(os.homedir(), '.agents', 'skills', 'designer-notes');
+  var codexSubmitDir = path.join(os.homedir(), '.agents', 'skills', 'submit-feedback');
+  [codexSkillDir, codexSubmitDir].forEach(function (dir) {
+    if (fs.existsSync(dir)) {
+      try {
+        fs.rmSync(dir, { recursive: true });
+        console.log('  \u2713 Removed ' + dir);
+      } catch (e) {
+        uninstallErrors.push(e.message);
+        console.log('  \u2717 Failed to remove ' + dir + ': ' + e.message);
+      }
+    }
+  });
+
   if (uninstallErrors.length > 0) {
     console.log('\n  Uninstall completed with ' + uninstallErrors.length + ' error(s).\n');
     process.exit(1);
@@ -158,12 +182,15 @@ function dirExists(p) {
 console.log('\n  designer-notes v' + VERSION + '\n');
 
 // Auto-detect editors if no flag specified
-var installClaude = claudeOnly || (!cursorOnly && dirExists(CLAUDE_DIR));
-var installCursor = cursorOnly || (!claudeOnly && (dirExists(CURSOR_DIR) || dirExists(path.join(process.cwd(), '.cursor'))));
+var noFlag = !claudeOnly && !cursorOnly && !codexOnly;
+var installClaude = claudeOnly || (noFlag && dirExists(CLAUDE_DIR));
+var installCursor = cursorOnly || (noFlag && (dirExists(CURSOR_DIR) || dirExists(path.join(process.cwd(), '.cursor'))));
+var CODEX_DIR = path.join(os.homedir(), '.codex');
+var installCodex = codexOnly || (noFlag && dirExists(CODEX_DIR));
 
-if (!installClaude && !installCursor) {
+if (!installClaude && !installCursor && !installCodex) {
   console.error('  Error: No supported editor detected.');
-  console.error('  Use --claude or --cursor to specify, or install an editor first.\n');
+  console.error('  Use --claude, --cursor, or --codex to specify, or install an editor first.\n');
   process.exit(1);
 }
 
@@ -349,6 +376,69 @@ if (installCursor) {
   }
 }
 
+// ── Codex install ──────────────────────────────────────────
+
+if (installCodex) {
+  var codexInstalled = dirExists(path.join(CODEX_SKILLS_DEST, 'designer-notes'));
+  var skipCodexCopy = false;
+  if (codexInstalled && !force) {
+    var codexVersionFile = path.join(CODEX_SKILLS_DEST, 'designer-notes', '.version');
+    var codexInstalledVersion = fileExists(codexVersionFile)
+      ? fs.readFileSync(codexVersionFile, 'utf8').trim()
+      : 'unknown';
+
+    if (codexInstalledVersion === VERSION) {
+      console.log('  Codex: already installed (v' + VERSION + ').');
+      skipCodexCopy = true;
+    } else {
+      console.log('  Codex: updating v' + codexInstalledVersion + ' → v' + VERSION + '...\n');
+    }
+  }
+
+  if (!skipCodexCopy) {
+    console.log('  Installing for Codex CLI...');
+
+    // Create skills directories
+    if (!dirExists(CODEX_SKILLS_DEST)) {
+      fs.mkdirSync(CODEX_SKILLS_DEST, { recursive: true });
+    }
+
+    // Copy Codex skill directories (SKILL.md files)
+    ['designer-notes', 'submit-feedback'].forEach(function (name) {
+      var src = path.join(CODEX_SKILLS_SOURCE, name);
+      var dest = path.join(CODEX_SKILLS_DEST, name);
+      try {
+        copyDir(src, dest);
+        console.log('  \u2713 ' + name + ' skill installed');
+      } catch (e) {
+        errors.push('codex ' + name + ' skill: ' + e.message);
+        console.log('  \u2717 ' + name + ' skill failed: ' + e.message);
+      }
+    });
+
+    // Copy tool files into the designer-notes skill directory
+    var codexToolDest = path.join(CODEX_SKILLS_DEST, 'designer-notes');
+    CODEX_TOOL_FILES.forEach(function (name) {
+      var src = path.join(TOOLS_SOURCE, name);
+      try {
+        fs.copyFileSync(src, path.join(codexToolDest, name));
+        console.log('  \u2713 ' + name + ' copied');
+      } catch (e) {
+        errors.push('codex ' + name + ': ' + e.message);
+        console.log('  \u2717 ' + name + ' failed: ' + e.message);
+      }
+    });
+
+    // Write version marker
+    try {
+      fs.writeFileSync(path.join(codexToolDest, '.version'), VERSION + '\n');
+    } catch (e) { /* non-critical */ }
+  }
+
+  // No hooks for Codex v1 — Codex hooks are Bash-only (no skill-level matching),
+  // so they'd fire on every bash command. Setup runs inline from the skill prompt.
+}
+
 // ── Report ──────────────────────────────────────────────────
 
 if (errors.length > 0) {
@@ -369,6 +459,13 @@ if (installCursor) {
   steps.push('    1. Run /designer-notes in Cursor\'s chat');
   steps.push('    2. Press C to start commenting in the browser');
   steps.push('    3. Run /submit-feedback to apply your notes');
+  steps.push('');
+}
+if (installCodex) {
+  steps.push('  Codex CLI:');
+  steps.push('    1. Use $designer-notes in Codex to set up');
+  steps.push('    2. Press C to start commenting in the browser');
+  steps.push('    3. Use $submit-feedback to apply your notes');
   steps.push('');
 }
 console.log(steps.join('\n'));
