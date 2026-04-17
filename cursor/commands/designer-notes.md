@@ -24,11 +24,14 @@ The script outputs JSON. Parse it — here's the shape:
   ],
   "server": { "status": "started", "port": 3847, "url": "http://localhost:3847" },
   "changelog": { "status": "already-exists" },
-  "config": { "exists": true, "preferences": { "autoApply": false } }
+  "config": { "exists": true, "preferences": { "autoApply": false } },
+  "update": { "installed": "1.6.0", "latest": "1.7.0", "command": "npx designer-notes@latest --force" }
 }
 ```
 
 If `toolFilesPresent` is false, tell the user to run: `npx designer-notes --cursor`
+
+If `update` is present, tell the user at the end of your report: **designer-notes v{latest} is available** (you have v{installed}). Run `{command}` to update. This is informational — don't block setup.
 
 ## Step 2: First-run config (only if `config.exists` is false)
 

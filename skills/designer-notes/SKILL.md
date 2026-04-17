@@ -34,7 +34,8 @@ The hook output (in the system message) is JSON with this shape:
   ],
   "server": { "status": "started", "port": 3847, "url": "http://localhost:3847" },
   "changelog": { "status": "already-exists" },
-  "config": { "exists": true, "preferences": { "autoApply": false, "defaultModel": "sonnet" } }
+  "config": { "exists": true, "preferences": { "autoApply": false, "defaultModel": "sonnet" } },
+  "update": { "installed": "1.6.0", "latest": "1.7.0", "command": "npx designer-notes@latest --force" }
 }
 ```
 
@@ -46,6 +47,8 @@ node ~/.claude/skills/designer-notes/setup.js --platform claude <project-dir> [f
 If `toolFilesPresent` is false, tell the user to install: `npx designer-notes@latest`
 
 If any HTML file has `status: "no-body-tag"`, warn the user.
+
+If `update` is present, tell the user at the end of your report: **designer-notes v{latest} is available** (you have v{installed}). Run `{command}` to update. This is informational — don't block setup.
 
 ### Step 2: First-run config (only if `config.exists` is false)
 
