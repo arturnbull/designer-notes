@@ -1906,10 +1906,38 @@
   }
 
   function toggleCritMode() {
+    if (state.textEditMode) toggleTextEditMode();
     state.critMode = !state.critMode;
     document.body.classList.toggle('dn-crit-mode', state.critMode);
     toggleBtn.classList.toggle('dn-active', state.critMode);
     if (!state.critMode) closePopover();
+    updateToggleButton();
+  }
+
+  function toggleTextEditMode() {
+    if (state.critMode) toggleCritMode();
+    if (state.activeTextEdit) dismissTextEdit();
+    state.textEditMode = !state.textEditMode;
+    document.body.classList.toggle('dn-text-edit-mode', state.textEditMode);
+    if (!state.textEditMode) clearTextHover();
+    updateToggleButton();
+  }
+
+  function updateToggleButton() {
+    if (!toggleBtn) return;
+    var svgComment = '<svg viewBox="0 0 24 24" data-designer-notes><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    var svgText = '<svg viewBox="0 0 24 24" data-designer-notes><path d="M12 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.375-9.375z"/></svg>';
+    var iconArea = toggleBtn.querySelector('svg');
+    if (iconArea) {
+      var temp = document.createElement('div');
+      temp.innerHTML = state.textEditMode ? svgText : svgComment;
+      var newSvg = temp.firstChild;
+      iconArea.parentNode.replaceChild(newSvg, iconArea);
+    }
+    toggleBtn.classList.toggle('dn-active', state.critMode || state.textEditMode);
+    // Update panel text edit button if it exists
+    var panelTextBtn = panelEl && panelEl.querySelector('.dn-panel-text-edit');
+    if (panelTextBtn) panelTextBtn.classList.toggle('dn-active', state.textEditMode);
   }
 
   function updateBadge() {
@@ -1986,14 +2014,25 @@
     if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey && !isTyping()) {
       e.preventDefault(); undo(); return;
     }
+    // Text edit accept/dismiss — must come before isTyping check
+    if (state.activeTextEdit && e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); acceptTextEdit(); return;
+    }
+    if (state.activeTextEdit && e.key === 'Escape') {
+      e.preventDefault(); dismissTextEdit(); return;
+    }
     if (e.key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTyping()) {
       e.preventDefault(); toggleCritMode(); return;
+    }
+    if (e.key === 't' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTyping()) {
+      e.preventDefault(); toggleTextEditMode(); return;
     }
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
       e.preventDefault(); toggleCritMode(); return;
     }
     if (e.key === 'Escape') {
-      if (state.editingCommentId) closePopover();
+      if (state.textEditMode) toggleTextEditMode();
+      else if (state.editingCommentId) closePopover();
       else if (state.critMode) toggleCritMode();
       else if (state.panelOpen) closePanel();
     }
