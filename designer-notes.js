@@ -15,9 +15,13 @@
 
   var state = {
     critMode: false,
+    textEditMode: false,
     comments: [],
+    textEdits: [],
     nextId: 1,
+    nextTextEditId: 1,
     editingCommentId: null,
+    activeTextEdit: null, // { element, before, selector, tagName, bounds }
     panelOpen: false,
     skills: [],
     directives: [],
@@ -44,6 +48,8 @@
       type: type,
       comments: JSON.parse(JSON.stringify(state.comments)),
       nextId: state.nextId,
+      textEdits: JSON.parse(JSON.stringify(state.textEdits)),
+      nextTextEditId: state.nextTextEditId,
     });
     if (undoStack.length > UNDO_MAX) undoStack.shift();
   }
@@ -53,9 +59,13 @@
     var entry = undoStack.pop();
     state.comments = entry.comments;
     state.nextId = entry.nextId;
+    state.textEdits = entry.textEdits || [];
+    state.nextTextEditId = entry.nextTextEditId || (state.textEdits.length + 1);
     saveState();
     closePopover();
+    dismissTextEdit();
     rerenderAllPins();
+    rerenderAllTextIndicators();
     if (state.panelOpen) renderCommentList();
     updateBadge();
     showToast('Undid: ' + entry.type);
@@ -70,6 +80,8 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         comments: state.comments,
         nextId: state.nextId,
+        textEdits: state.textEdits,
+        nextTextEditId: state.nextTextEditId,
       }));
     } catch (e) {}
   }
@@ -80,6 +92,8 @@
       if (data && data.comments) {
         state.comments = data.comments;
         state.nextId = data.nextId || state.comments.length + 1;
+        state.textEdits = data.textEdits || [];
+        state.nextTextEditId = data.nextTextEditId || (state.textEdits.length + 1);
         // Migration: strip removed fields from old data
         state.comments.forEach(function (c) {
           delete c.resolved;
