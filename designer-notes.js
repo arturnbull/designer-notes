@@ -139,7 +139,8 @@
 
   // Auto-export: saves markdown to server after every comment change
   function autoExport() {
-    if (!serverAvailable || state.comments.length === 0) return;
+    if (!serverAvailable) return;
+    if (state.comments.length === 0 && state.textEdits.length === 0) return;
     var md = generateMarkdown();
     var dateSlug = new Date().toISOString().substring(0, 10);
     saveToServer('feedback-' + dateSlug + '.md', md).catch(function () {});
@@ -515,13 +516,23 @@
     '[data-designer-notes] button:focus-visible,[data-designer-notes] textarea:focus-visible{outline:2px solid var(--dn-brand);outline-offset:2px}',
 
     // Toggle
-    '.dn-toggle{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:24px;background:var(--dn-brand);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.2);z-index:2147483640;transition:transform .15s,background .15s;padding:0}',
-    '.dn-toggle:hover{transform:scale(1.08);background:var(--dn-brand-hover)}',
-    '.dn-toggle.dn-active{background:var(--dn-danger)}',
-    '.dn-toggle.dn-active:hover{background:var(--dn-danger-hover)}',
-    '.dn-toggle svg{width:24px;height:24px;fill:#fff}',
-    '.dn-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:10px;background:var(--dn-danger);color:#fff;font-size:var(--dn-font-xs);font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px}',
-    '.dn-toggle.dn-active .dn-badge{background:#fff;color:var(--dn-danger)}',
+    '.dn-toggle{position:fixed;bottom:24px;right:80px;width:48px;height:48px;border-radius:24px;background:var(--dn-bg);border:2px solid var(--dn-border);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:2147483640;transition:transform .15s,background .15s,border-color .15s;padding:0}',
+    '.dn-toggle:hover{transform:scale(1.08);border-color:var(--dn-brand)}',
+    '.dn-toggle.dn-active{background:var(--dn-brand);border-color:var(--dn-brand)}',
+    '.dn-toggle.dn-active:hover{background:var(--dn-brand-hover);border-color:var(--dn-brand-hover)}',
+    '.dn-toggle svg{width:22px;height:22px;fill:none;stroke:var(--dn-text-secondary);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+    '.dn-toggle.dn-active svg{stroke:#fff;fill:none}',
+    '.dn-text-toggle{position:fixed;bottom:24px;right:136px;width:48px;height:48px;border-radius:24px;background:var(--dn-bg);border:2px solid var(--dn-border);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:2147483640;transition:transform .15s,background .15s,border-color .15s;padding:0}',
+    '.dn-text-toggle:hover{transform:scale(1.08);border-color:var(--dn-brand)}',
+    '.dn-text-toggle.dn-active{background:var(--dn-brand);border-color:var(--dn-brand)}',
+    '.dn-text-toggle.dn-active:hover{background:var(--dn-brand-hover);border-color:var(--dn-brand-hover)}',
+    '.dn-text-toggle svg{width:22px;height:22px;fill:none;stroke:var(--dn-text-secondary);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+    '.dn-text-toggle.dn-active svg{stroke:#fff}',
+    '.dn-more-toggle{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:24px;background:var(--dn-bg);border:2px solid var(--dn-border);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:2147483640;transition:transform .15s,background .15s,border-color .15s;padding:0}',
+    '.dn-more-toggle:hover{transform:scale(1.08);border-color:var(--dn-brand)}',
+    '.dn-more-toggle svg{width:22px;height:22px;fill:var(--dn-text-secondary);stroke:none}',
+    '.dn-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:10px;background:var(--dn-brand);color:#fff;font-size:var(--dn-font-xs);font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px}',
+    '.dn-toggle.dn-active .dn-badge{background:#fff;color:var(--dn-brand)}',
     '.dn-badge:empty,.dn-badge[data-count="0"]{display:none}',
 
     'body.dn-crit-mode,body.dn-crit-mode *:not([data-designer-notes]):not([data-designer-notes] *){cursor:crosshair!important}',
@@ -539,8 +550,8 @@
     '.dn-pin-new{animation:dn-pin-pop .3s ease forwards}',
 
     // Text edit mode styles
-    '.dn-text-hover{outline:1px solid var(--dn-brand);outline-offset:-1px}',
-    '.dn-text-editing{outline:2px solid var(--dn-brand);outline-offset:-2px;background:rgba(59,130,246,0.06)}',
+    '.dn-text-hover{outline:2px solid #3b82f6!important;outline-offset:-1px}',
+    '.dn-text-editing{outline:2px solid #3b82f6!important;outline-offset:-2px;background:rgba(59,130,246,0.06)!important}',
     '.dn-text-controls{display:flex;justify-content:flex-end;gap:6px;margin-top:6px;position:absolute;z-index:2147483641;pointer-events:auto}',
     '.dn-text-dismiss{width:32px;height:32px;border-radius:8px;border:1px solid var(--dn-border);background:var(--dn-bg-subtle);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dn-text-muted);transition:background .15s,color .15s;padding:0}',
     '.dn-text-dismiss:hover{background:var(--dn-bg-tinted);color:var(--dn-text)}',
@@ -691,7 +702,7 @@
     // /animate: view transitions
     '.dn-view-entering{opacity:0;transform:translateX(12px)}',
     '.dn-view-leaving{opacity:0;transform:translateX(-12px);pointer-events:none}',
-    'body.dn-ui-hidden [data-designer-notes="toggle"],body.dn-ui-hidden [data-designer-notes="pins"],body.dn-ui-hidden [data-designer-notes="panel"],body.dn-ui-hidden [data-designer-notes="popover"],body.dn-ui-hidden [data-designer-notes="preview"]{display:none!important}',
+    'body.dn-ui-hidden [data-designer-notes="toggle"],body.dn-ui-hidden [data-designer-notes="text-toggle"],body.dn-ui-hidden [data-designer-notes="more-toggle"],body.dn-ui-hidden [data-designer-notes="pins"],body.dn-ui-hidden [data-designer-notes="panel"],body.dn-ui-hidden [data-designer-notes="popover"],body.dn-ui-hidden [data-designer-notes="preview"]{display:none!important}',
     'body.dn-toggle-hidden [data-designer-notes="toggle"]{display:none!important}',
     '.dn-comment-list{flex:1;overflow-y:auto;padding:0;transition:opacity .15s ease-out,transform .15s ease-out}',
     '.dn-comment-list::-webkit-scrollbar{width:6px}',
@@ -1416,11 +1427,8 @@
     panelEl.setAttribute('data-designer-notes', 'panel');
     panelEl.innerHTML =
       '<div class="dn-panel-header" data-designer-notes>' +
-        '<h2 class="dn-panel-title" data-designer-notes>Comments <span class="dn-comment-count" data-designer-notes></span></h2>' +
+        '<h2 class="dn-panel-title" data-designer-notes>Feedback <span class="dn-comment-count" data-designer-notes></span></h2>' +
         '<div class="dn-panel-header-actions" data-designer-notes>' +
-          '<button class="dn-panel-text-edit" data-designer-notes title="Text edit mode (T)">' +
-            '<svg viewBox="0 0 24 24" data-designer-notes><path d="M12 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.375-9.375z"/></svg>' +
-          '</button>' +
           '<button class="dn-panel-settings" data-designer-notes title="Settings">' +
             '<svg viewBox="0 0 24 24" data-designer-notes><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' +
           '</button>' +
@@ -1441,12 +1449,6 @@
     panelEl.querySelector('.dn-panel-settings').addEventListener('click', showSettings);
     panelEl.querySelector('.dn-panel-copy').addEventListener('click', function () {
       copyToClipboard();
-    });
-    var textEditBtn = panelEl.querySelector('.dn-panel-text-edit');
-    textEditBtn.addEventListener('click', function () {
-      toggleTextEditMode();
-      textEditBtn.classList.toggle('dn-active', state.textEditMode);
-      if (state.textEditMode) closePanel();
     });
     commentListEl = panelEl.querySelector('.dn-comment-list');
 
@@ -1688,19 +1690,21 @@
 
   function renderCommentList() {
     var all = state.comments;
+    var allTextEdits = state.textEdits;
+    var totalCount = all.length + allTextEdits.length;
     // Restore panel title when returning from settings
     var titleEl = panelEl.querySelector('.dn-panel-title');
     var comingFromSettings = titleEl && titleEl.textContent === 'Settings';
     if (comingFromSettings) {
-      titleEl.innerHTML = 'Comments <span class="dn-comment-count" data-designer-notes></span>';
+      titleEl.innerHTML = 'Feedback <span class="dn-comment-count" data-designer-notes></span>';
     }
-    panelEl.querySelector('.dn-comment-count').textContent = all.length > 0 ? '(' + all.length + ')' : '';
+    panelEl.querySelector('.dn-comment-count').textContent = totalCount > 0 ? '(' + totalCount + ')' : '';
 
-    if (all.length === 0) {
+    if (totalCount === 0) {
       commentListEl.innerHTML =
         '<div class="dn-empty" data-designer-notes>' +
-          '<svg viewBox="0 0 24 24" data-designer-notes><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' +
-          '<p data-designer-notes>No comments yet.<br>Press <strong>C</strong> to enter comment mode.</p>' +
+          '<svg viewBox="0 0 24 24" data-designer-notes><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
+          '<p data-designer-notes>No feedback yet.<br>Press <strong>C</strong> for comments, <strong>T</strong> for text edits.</p>' +
         '</div>';
       // Animate in from left when returning from settings
       if (comingFromSettings) {
@@ -1854,6 +1858,63 @@
       });
     });
 
+    // Text edits section
+    if (allTextEdits.length > 0) {
+      var tePages = {};
+      allTextEdits.forEach(function (te) { if (!tePages[te.page]) tePages[te.page] = []; tePages[te.page].push(te); });
+      Object.keys(tePages).forEach(function (page) {
+        var teHdr = document.createElement('div');
+        teHdr.className = 'dn-page-group';
+        teHdr.setAttribute('data-designer-notes', 'group');
+        teHdr.textContent = page + ' — text edits';
+        commentListEl.appendChild(teHdr);
+
+        tePages[page].forEach(function (te, i) {
+          var teRow = document.createElement('div');
+          teRow.className = 'dn-comment-row';
+          teRow.setAttribute('data-designer-notes', 'row');
+          var preview = te.before.length > 40 ? te.before.substring(0, 40) + '…' : te.before;
+          var afterPreview = te.after.length > 40 ? te.after.substring(0, 40) + '…' : te.after;
+          teRow.innerHTML =
+            '<div class="dn-row-number" data-designer-notes style="background:#3b82f6">T' + (i + 1) + '</div>' +
+            '<div class="dn-row-content" data-designer-notes>' +
+              '<button class="dn-row-delete dn-row-btn" data-designer-notes title="Delete">' +
+                '<svg viewBox="0 0 24 24" data-designer-notes><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 10v8M14 10v8"/></svg>' +
+              '</button>' +
+              '<div class="dn-row-meta" data-designer-notes>' +
+                '<span class="dn-row-tag" data-designer-notes>' + te.tagName + '</span>' +
+                '<span class="dn-row-time" data-designer-notes>' + relativeTime(te.timestamp) + '</span>' +
+              '</div>' +
+              '<span class="dn-row-text" data-designer-notes>"' + escapeHtml(preview) + '" → "' + escapeHtml(afterPreview) + '"</span>' +
+            '</div>';
+          teRow.querySelector('.dn-row-delete').addEventListener('click', function (e) {
+            e.stopPropagation();
+            showConfirm('Are you sure you want to delete this text edit?', function () {
+              pushUndo('delete text edit');
+              state.textEdits = state.textEdits.filter(function (t) { return t.id !== te.id; });
+              saveState();
+              autoExport();
+              rerenderAllTextIndicators();
+              renderCommentList();
+              updateBadge();
+            });
+          });
+          if (page === currentPage()) {
+            teRow.addEventListener('click', function (e) {
+              if (e.target.closest('.dn-row-delete')) return;
+              try {
+                var el = document.querySelector(te.selector);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              } catch (ex) {}
+            });
+          } else {
+            teRow.style.cursor = 'default';
+          }
+          commentListEl.appendChild(teRow);
+        });
+      });
+    }
+
     // Animate in from left when returning from settings
     if (comingFromSettings) {
       commentListEl.style.transform = 'translateX(-12px)';
@@ -1892,33 +1953,59 @@
   // INTERACTION HANDLERS
   // =========================================================================
 
-  var toggleBtn, badgeEl;
+  var toggleBtn, badgeEl, textToggleBtn, moreBtn;
 
   function createToggle() {
     toggleBtn = document.createElement('button');
     toggleBtn.className = 'dn-toggle';
     toggleBtn.setAttribute('data-designer-notes', 'toggle');
-    toggleBtn.setAttribute('title', 'Open comment panel');
+    toggleBtn.setAttribute('title', 'Comment mode (C)');
     toggleBtn.innerHTML =
-      '<svg viewBox="0 0 24 24" data-designer-notes><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' +
-      '<span class="dn-badge" data-designer-notes data-count="0"></span>';
-    badgeEl = toggleBtn.querySelector('.dn-badge');
+      '<svg viewBox="0 0 24 24" data-designer-notes><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
     toggleBtn.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (!state.critMode) {
-        // First click: enter crit mode
-        toggleCritMode();
-      } else if (state.panelOpen) {
-        closePanel();
-      } else {
-        openPanel();
-      }
+      toggleCritMode();
     });
     document.body.appendChild(toggleBtn);
+
+    // Dedicated text edit toggle button
+    textToggleBtn = document.createElement('button');
+    textToggleBtn.className = 'dn-text-toggle';
+    textToggleBtn.setAttribute('data-designer-notes', 'text-toggle');
+    textToggleBtn.setAttribute('title', 'Text edit mode (T)');
+    textToggleBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" data-designer-notes><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
+    textToggleBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleTextEditMode();
+    });
+    document.body.appendChild(textToggleBtn);
+
+    // More button — opens the panel
+    moreBtn = document.createElement('button');
+    moreBtn.className = 'dn-more-toggle';
+    moreBtn.setAttribute('data-designer-notes', 'more-toggle');
+    moreBtn.setAttribute('title', 'Open panel');
+    moreBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" data-designer-notes><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>' +
+      '<span class="dn-badge" data-designer-notes data-count="0"></span>';
+    badgeEl = moreBtn.querySelector('.dn-badge');
+    moreBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (state.panelOpen) closePanel();
+      else openPanel();
+    });
+    document.body.appendChild(moreBtn);
   }
 
   function toggleCritMode() {
-    if (state.textEditMode) toggleTextEditMode();
+    // Deactivate text edit mode without re-entering toggleCritMode
+    if (state.textEditMode) {
+      if (state.activeTextEdit) dismissTextEdit();
+      state.textEditMode = false;
+      document.body.classList.remove('dn-text-edit-mode');
+      clearTextHover();
+    }
     state.critMode = !state.critMode;
     document.body.classList.toggle('dn-crit-mode', state.critMode);
     toggleBtn.classList.toggle('dn-active', state.critMode);
@@ -1927,7 +2014,13 @@
   }
 
   function toggleTextEditMode() {
-    if (state.critMode) toggleCritMode();
+    // Deactivate crit mode without re-entering toggleTextEditMode
+    if (state.critMode) {
+      state.critMode = false;
+      document.body.classList.remove('dn-crit-mode');
+      toggleBtn.classList.remove('dn-active');
+      closePopover();
+    }
     if (state.activeTextEdit) dismissTextEdit();
     state.textEditMode = !state.textEditMode;
     document.body.classList.toggle('dn-text-edit-mode', state.textEditMode);
@@ -1937,19 +2030,9 @@
 
   function updateToggleButton() {
     if (!toggleBtn) return;
-    var svgComment = '<svg viewBox="0 0 24 24" data-designer-notes><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-    var svgText = '<svg viewBox="0 0 24 24" data-designer-notes><path d="M12 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.375-9.375z"/></svg>';
-    var iconArea = toggleBtn.querySelector('svg');
-    if (iconArea) {
-      var temp = document.createElement('div');
-      temp.innerHTML = state.textEditMode ? svgText : svgComment;
-      var newSvg = temp.firstChild;
-      iconArea.parentNode.replaceChild(newSvg, iconArea);
-    }
-    toggleBtn.classList.toggle('dn-active', state.critMode || state.textEditMode);
-    // Update panel text edit button if it exists
-    var panelTextBtn = panelEl && panelEl.querySelector('.dn-panel-text-edit');
-    if (panelTextBtn) panelTextBtn.classList.toggle('dn-active', state.textEditMode);
+    toggleBtn.classList.toggle('dn-active', state.critMode);
+    // Update dedicated text toggle button
+    if (textToggleBtn) textToggleBtn.classList.toggle('dn-active', state.textEditMode);
   }
 
   // =========================================================================
@@ -2093,20 +2176,37 @@
     removeTextControls();
     if (after !== edit.before) {
       pushUndo('text edit');
-      var textEdit = {
-        id: state.nextTextEditId++,
-        page: currentPage(),
-        selector: edit.selector,
-        tagName: edit.tagName,
-        before: edit.before,
-        after: after,
-        elementRect: edit.bounds,
-        timestamp: new Date().toISOString(),
-      };
-      state.textEdits.push(textEdit);
+      // Check if an existing text edit targets the same element
+      var existing = null;
+      for (var i = 0; i < state.textEdits.length; i++) {
+        if (state.textEdits[i].selector === edit.selector && state.textEdits[i].page === currentPage()) {
+          existing = state.textEdits[i];
+          break;
+        }
+      }
+      if (existing) {
+        // Update existing entry — keep original "before", update "after"
+        existing.after = after;
+        existing.elementRect = edit.bounds;
+        existing.timestamp = new Date().toISOString();
+      } else {
+        var textEdit = {
+          id: state.nextTextEditId++,
+          page: currentPage(),
+          selector: edit.selector,
+          tagName: edit.tagName,
+          before: edit.before,
+          after: after,
+          elementRect: edit.bounds,
+          timestamp: new Date().toISOString(),
+        };
+        state.textEdits.push(textEdit);
+      }
       saveState();
-      renderTextIndicator(el, textEdit);
+      rerenderAllTextIndicators();
       autoExport();
+      if (state.panelOpen) renderCommentList();
+      updateBadge();
       showToast('Text edit saved');
     }
     state.activeTextEdit = null;
@@ -2174,7 +2274,9 @@
   }
 
   function updateBadge() {
-    var count = pageComments().length;
+    var commentCount = pageComments().length;
+    var textEditCount = state.textEdits.filter(function (te) { return te.page === currentPage(); }).length;
+    var count = commentCount + textEditCount;
     badgeEl.textContent = count > 0 ? count : '';
     badgeEl.setAttribute('data-count', count);
   }
