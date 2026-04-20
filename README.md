@@ -40,8 +40,8 @@ npx designer-notes@latest --force
 
 1. Open Claude Code in any project with HTML files
 2. Run `/designer-notes` — it adds the script and starts the dev server
-3. Press **C** to enter comment mode, click elements to leave notes
-4. Run `/submit-feedback` — Claude reads your notes and edits the code
+3. Press **C** to comment on elements, or **T** to edit text directly
+4. Run `/submit-feedback` — Claude reads your feedback and edits the code
 
 ## What it does
 
@@ -52,11 +52,12 @@ Every comment is saved with its CSS selector and click position into a structure
 ### Features
 
 - **Pin notes to any element** — click a heading, button, or card to attach feedback
+- **Inline text editing** — click any text element to edit it directly in the browser, Figma-style. Before/after changes are exported as structured diffs and applied automatically
 - **Batch reviews** — leave all your notes first, submit once
 - **Slash commands** — use your environment's existing Claude skills
 - **Model directives** — use `#opus`, `#sonnet`, or `#haiku` per comment
 - **Effort directives** — use `#high-effort`, `#medium-effort`, or `#low-effort`
-- **Auto-save** — comments persist and export to markdown automatically
+- **Auto-save** — comments and text edits persist and export to markdown automatically
 - **Viewport tracking** — feedback includes window size so changes target the right breakpoint
 - **Changelog** — cumulative HTML changelog generated after each feedback round
 
@@ -65,6 +66,7 @@ Every comment is saved with its CSS selector and click position into a structure
 | Key | Action |
 |-----|--------|
 | `C` | Toggle comment mode |
+| `T` | Toggle text edit mode |
 | `⌘\` | Open / close sidepanel |
 | `⌘.` | Show / hide all UI |
 
@@ -96,11 +98,13 @@ Then restart Claude Code.
 
 1. `/designer-notes` adds a `<script>` tag to your HTML and starts a local dev server
 2. The server auto-finds an open port (defaults to 3847, increments if in use)
-3. Press **C** in the browser to enter comment mode — click elements to place numbered pins
-4. Type your feedback in the popover. Use `/skills` and `#directives` for advanced control
-5. Comments auto-save to `feedback-YYYY-MM-DD.md` in your project directory
-6. `/submit-feedback` parses the markdown, locates each element in source, and applies changes
-7. After changes are applied, the browser clears automatically for the next review round
+3. Three floating buttons appear in the bottom-right: text edit (pencil), comment (speech bubble), and panel (ellipsis)
+4. Press **C** to enter comment mode — click elements to place numbered pins and type feedback
+5. Press **T** to enter text edit mode — click any text element to edit it inline. Accept with Enter, dismiss with Esc. Re-editing the same element updates the existing entry
+6. Use `/skills` and `#directives` in comment popovers for advanced control
+7. All feedback auto-saves to `feedback-YYYY-MM-DD.md` in your project directory
+8. `/submit-feedback` parses the markdown, locates each element in source, and applies changes. Text edits are applied via haiku for speed
+9. After changes are applied, the browser clears automatically for the next review round
 
 ## Requirements
 
