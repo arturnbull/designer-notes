@@ -167,11 +167,14 @@
   function clearAllComments() {
     state.comments = [];
     state.nextId = 1;
+    state.textEdits = [];
+    state.nextTextEditId = 1;
     state.editingCommentId = null;
     undoStack.length = 0;
     saveState();
     closePopover();
     rerenderAllPins();
+    rerenderAllTextIndicators();
     updateBadge();
 
     if (state.panelOpen) {
@@ -1949,6 +1952,227 @@
     if (panelTextBtn) panelTextBtn.classList.toggle('dn-active', state.textEditMode);
   }
 
+  // =========================================================================
+  // TEXT EDIT — DETECTION & HOVER
+  // =========================================================================
+
+  var SKIP_TAGS = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, SVG: 1, BR: 1, HR: 1, IMG: 1 };
+
+  function isTextElement(el) {
+    if (!el || !el.tagName) return false;
+    if (SKIP_TAGS[el.tagName]) return false;
+    if (el.closest('[data-designer-notes]')) return false;
+    var nodes = el.childNodes;
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].nodeType === 3 && nodes[i].textContent.trim().length > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  var hoveredTextEl = null;
+
+  function handleTextHover(e) {
+    if (!state.textEditMode || state.activeTextEdit) return;
+    var target = e.target;
+    var textEl = isTextElement(target) ? target : null;
+    if (textEl === hoveredTextEl) return;
+    if (hoveredTextEl) {
+      hoveredTextEl.classList.remove('dn-text-hover');
+      hoveredTextEl.style.cursor = '';
+    }
+    hoveredTextEl = textEl;
+    if (hoveredTextEl) {
+      hoveredTextEl.classList.add('dn-text-hover');
+      hoveredTextEl.style.cursor = 'text';
+    }
+  }
+
+  function clearTextHover() {
+    if (hoveredTextEl) {
+      hoveredTextEl.classList.remove('dn-text-hover');
+      hoveredTextEl.style.cursor = '';
+      hoveredTextEl = null;
+    }
+  }
+
+  // =========================================================================
+  // TEXT EDIT — INLINE EDITING & CONTROLS
+  // =========================================================================
+
+  var textControlsEl = null;
+
+  function activateTextEdit(el) {
+    if (state.activeTextEdit) dismissTextEdit();
+    clearTextHover();
+    var before = el.textContent;
+    var selector = computeSelector(el);
+    var tagName = el.tagName;
+    var rect = el.getBoundingClientRect();
+    var scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    var scrollY = window.pageYOffset || document.documentElement.scrollTop;
+    var bounds = {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      x: Math.round(rect.left + scrollX),
+      y: Math.round(rect.top + scrollY),
+    };
+    state.activeTextEdit = {
+      element: el,
+      before: before,
+      selector: selector,
+      tagName: tagName,
+      bounds: bounds,
+    };
+    el.contentEditable = 'true';
+    el.style.webkitUserModify = 'read-write-plaintext-only';
+    el.classList.remove('dn-text-hover');
+    el.classList.add('dn-text-editing');
+    el.focus();
+    el.addEventListener('paste', handleTextPaste);
+    showTextControls(el);
+  }
+
+  function handleTextPaste(e) {
+    e.preventDefault();
+    var text = (e.clipboardData || window.clipboardData).getData('text/plain');
+    document.execCommand('insertText', false, text);
+  }
+
+  function showTextControls(el) {
+    removeTextControls();
+    textControlsEl = document.createElement('div');
+    textControlsEl.className = 'dn-text-controls';
+    textControlsEl.setAttribute('data-designer-notes', 'text-controls');
+    textControlsEl.innerHTML =
+      '<button class="dn-text-dismiss" data-designer-notes title="Dismiss (Esc)">' +
+        '<svg viewBox="0 0 24 24" data-designer-notes><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+      '</button>' +
+      '<button class="dn-text-accept" data-designer-notes title="Accept (Enter)">' +
+        '<svg viewBox="0 0 24 24" data-designer-notes><polyline points="20 6 9 17 4 12"/></svg>' +
+      '</button>';
+    textControlsEl.querySelector('.dn-text-dismiss').addEventListener('click', function (e) {
+      e.stopPropagation();
+      dismissTextEdit();
+    });
+    textControlsEl.querySelector('.dn-text-accept').addEventListener('click', function (e) {
+      e.stopPropagation();
+      acceptTextEdit();
+    });
+    positionTextControls(el);
+    document.body.appendChild(textControlsEl);
+  }
+
+  function positionTextControls(el) {
+    if (!textControlsEl) return;
+    var rect = el.getBoundingClientRect();
+    var scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    var scrollY = window.pageYOffset || document.documentElement.scrollTop;
+    textControlsEl.style.position = 'absolute';
+    textControlsEl.style.top = (rect.bottom + scrollY + 6) + 'px';
+    textControlsEl.style.right = (document.documentElement.clientWidth - rect.right - scrollX) + 'px';
+  }
+
+  function removeTextControls() {
+    if (textControlsEl && textControlsEl.parentNode) {
+      textControlsEl.parentNode.removeChild(textControlsEl);
+    }
+    textControlsEl = null;
+  }
+
+  function acceptTextEdit() {
+    if (!state.activeTextEdit) return;
+    var edit = state.activeTextEdit;
+    var el = edit.element;
+    var after = el.textContent;
+    el.contentEditable = 'false';
+    el.style.webkitUserModify = '';
+    el.classList.remove('dn-text-editing');
+    el.removeEventListener('paste', handleTextPaste);
+    removeTextControls();
+    if (after !== edit.before) {
+      pushUndo('text edit');
+      var textEdit = {
+        id: state.nextTextEditId++,
+        page: currentPage(),
+        selector: edit.selector,
+        tagName: edit.tagName,
+        before: edit.before,
+        after: after,
+        elementRect: edit.bounds,
+        timestamp: new Date().toISOString(),
+      };
+      state.textEdits.push(textEdit);
+      saveState();
+      renderTextIndicator(el, textEdit);
+      autoExport();
+      showToast('Text edit saved');
+    }
+    state.activeTextEdit = null;
+  }
+
+  function dismissTextEdit() {
+    if (!state.activeTextEdit) return;
+    var edit = state.activeTextEdit;
+    var el = edit.element;
+    el.textContent = edit.before;
+    el.contentEditable = 'false';
+    el.style.webkitUserModify = '';
+    el.classList.remove('dn-text-editing');
+    el.removeEventListener('paste', handleTextPaste);
+    removeTextControls();
+    state.activeTextEdit = null;
+  }
+
+  function handleTextClick(e) {
+    if (!state.textEditMode) return;
+    if (e.target.closest('[data-designer-notes]')) return;
+    if (state.activeTextEdit && state.activeTextEdit.element === e.target) return;
+    var target = e.target;
+    if (!isTextElement(target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    activateTextEdit(target);
+  }
+
+  // =========================================================================
+  // TEXT EDIT — INDICATORS
+  // =========================================================================
+
+  function renderTextIndicator(el, textEdit) {
+    var existing = document.querySelector('.dn-text-indicator[data-text-edit-id="' + textEdit.id + '"]');
+    if (existing) existing.parentNode.removeChild(existing);
+    var indicator = document.createElement('div');
+    indicator.className = 'dn-text-indicator';
+    indicator.setAttribute('data-designer-notes', 'text-indicator');
+    indicator.setAttribute('data-text-edit-id', textEdit.id);
+    var num = state.textEdits.indexOf(textEdit) + 1;
+    indicator.innerHTML =
+      '<div class="dn-text-indicator-bar" data-designer-notes></div>' +
+      '<div class="dn-text-indicator-num" data-designer-notes>' + num + '</div>';
+    var rect = el.getBoundingClientRect();
+    var scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    var scrollY = window.pageYOffset || document.documentElement.scrollTop;
+    indicator.style.left = (rect.left + scrollX - 14) + 'px';
+    indicator.style.top = (rect.top + scrollY) + 'px';
+    indicator.style.height = rect.height + 'px';
+    document.body.appendChild(indicator);
+  }
+
+  function rerenderAllTextIndicators() {
+    var existing = document.querySelectorAll('.dn-text-indicator');
+    for (var i = 0; i < existing.length; i++) {
+      existing[i].parentNode.removeChild(existing[i]);
+    }
+    var pageEdits = state.textEdits.filter(function (te) { return te.page === currentPage(); });
+    pageEdits.forEach(function (te) {
+      var el = document.querySelector(te.selector);
+      if (el) renderTextIndicator(el, te);
+    });
+  }
+
   function updateBadge() {
     var count = pageComments().length;
     badgeEl.textContent = count > 0 ? count : '';
@@ -2054,7 +2278,10 @@
   var repositionTimer;
   function handleReposition() {
     clearTimeout(repositionTimer);
-    repositionTimer = setTimeout(repositionAllPins, 150);
+    repositionTimer = setTimeout(function () {
+      repositionAllPins();
+      rerenderAllTextIndicators();
+    }, 150);
   }
 
   // =========================================================================
@@ -2122,11 +2349,14 @@
     createPopover();
     createPanel();
     rerenderAllPins();
+    rerenderAllTextIndicators();
     updateBadge();
 
     document.addEventListener('click', handleCritClick, true);
+    document.addEventListener('click', handleTextClick, true);
     document.addEventListener('click', handleDocumentClick, false);
     document.addEventListener('keydown', handleKeydown, false);
+    document.addEventListener('mousemove', handleTextHover, true);
     window.addEventListener('resize', handleReposition, false);
     window.addEventListener('scroll', handleReposition, true);
   }
