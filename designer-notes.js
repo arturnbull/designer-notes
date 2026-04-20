@@ -2114,7 +2114,14 @@
     el.classList.add('dn-text-editing');
     el.focus();
     el.addEventListener('paste', handleTextPaste);
+    el.addEventListener('input', handleTextInput);
     showTextControls(el);
+  }
+
+  function handleTextInput() {
+    if (state.activeTextEdit) {
+      positionTextControls(state.activeTextEdit.element);
+    }
   }
 
   function handleTextPaste(e) {
@@ -2173,6 +2180,7 @@
     el.style.webkitUserModify = '';
     el.classList.remove('dn-text-editing');
     el.removeEventListener('paste', handleTextPaste);
+    el.removeEventListener('input', handleTextInput);
     removeTextControls();
     if (after !== edit.before) {
       pushUndo('text edit');
@@ -2221,6 +2229,7 @@
     el.style.webkitUserModify = '';
     el.classList.remove('dn-text-editing');
     el.removeEventListener('paste', handleTextPaste);
+    el.removeEventListener('input', handleTextInput);
     removeTextControls();
     state.activeTextEdit = null;
   }
