@@ -2293,7 +2293,7 @@
     var all = state.comments;
     var vw = window.innerWidth;
     var vh = window.innerHeight;
-    var md = '# UI Feedback\nGenerated: ' + dateStr + '\nTotal comments: ' + all.length + '\nViewport: ' + vw + 'x' + vh + '\n\n---\n';
+    var md = '# UI Feedback\nGenerated: ' + dateStr + '\nTotal comments: ' + all.length + '\nTotal text edits: ' + state.textEdits.length + '\nViewport: ' + vw + 'x' + vh + '\n\n---\n';
 
     var pages = {};
     all.forEach(function (c) { if (!pages[c.page]) pages[c.page] = []; pages[c.page].push(c); });
@@ -2318,12 +2318,36 @@
       });
     });
 
+    // Text edits section
+    var pageTextEdits = {};
+    state.textEdits.forEach(function (te) {
+      if (!pageTextEdits[te.page]) pageTextEdits[te.page] = [];
+      pageTextEdits[te.page].push(te);
+    });
+
+    if (state.textEdits.length > 0) {
+      var teNum = 0;
+      Object.keys(pageTextEdits).forEach(function (page) {
+        md += '\n## Text Edits — Page: ' + page + '\n\n';
+        pageTextEdits[page].forEach(function (te) {
+          teNum++;
+          md += '### Edit ' + teNum + '\n';
+          md += '**Element:** `' + te.selector + '`\n';
+          md += '**Tag:** ' + te.tagName + '\n';
+          md += '**Before:** "' + te.before.replace(/"/g, '\\"') + '"\n';
+          md += '**After:** "' + te.after.replace(/"/g, '\\"') + '"\n';
+          md += '**Element bounds:** ' + te.elementRect.width + 'x' + te.elementRect.height + ' at (' + te.elementRect.x + ', ' + te.elementRect.y + ')\n';
+          md += '\n---\n';
+        });
+      });
+    }
+
     md += '\n*Exported by designer-notes*\n';
     return md;
   }
 
   function copyToClipboard() {
-    if (state.comments.length === 0) { showToast('No comments to copy'); return; }
+    if (state.comments.length === 0 && state.textEdits.length === 0) { showToast('No feedback to copy'); return; }
     var md = generateMarkdown();
     navigator.clipboard.writeText(md).then(function () {
       showToast('Copied ' + state.comments.length + ' comments');
