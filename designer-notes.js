@@ -2485,7 +2485,677 @@
   }
 
   // =========================================================================
-  // INSPECT MODE — PROPERTY DETECTION & SECTIONS
+  // INSPECT MODE — V2 SECTION BUILDERS
+  // =========================================================================
+
+  function createInspectSection(labelText, cssHint) {
+    var section = document.createElement('div');
+    section.className = 'dn-inspect-section';
+
+    var label = document.createElement('div');
+    label.className = 'dn-inspect-section-label';
+    var labelSpan = document.createElement('span');
+    labelSpan.textContent = labelText;
+    label.appendChild(labelSpan);
+    if (cssHint) {
+      var hint = document.createElement('span');
+      hint.className = 'dn-inspect-css-hint';
+      hint.textContent = cssHint;
+      label.appendChild(hint);
+    }
+
+    var body = document.createElement('div');
+    body.className = 'dn-inspect-section-body';
+
+    label.addEventListener('click', function () {
+      section.classList.toggle('collapsed');
+    });
+
+    section.appendChild(label);
+    section.appendChild(body);
+    return { section: section, body: body };
+  }
+
+  function createCompactInput(labelText, value, opts) {
+    opts = opts || {};
+    var field = document.createElement('div');
+    field.className = 'dn-inspect-field';
+
+    var lbl = document.createElement('span');
+    lbl.className = 'dn-inspect-field-label';
+    lbl.style.width = (opts.labelWidth || 14) + 'px';
+    lbl.textContent = labelText;
+    field.appendChild(lbl);
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'dn-inspect-input';
+    if (opts.dimmed) input.classList.add('dimmed');
+    input.value = value;
+    if (opts.readOnly) input.readOnly = true;
+
+    var originalValue = value;
+
+    if (!opts.readOnly) {
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          var parsed = parseNumericValue(input.value);
+          if (!parsed) return;
+          var step = e.shiftKey ? 10 : 1;
+          if (parsed.unit === '' && (opts.prop === 'opacity')) {
+            step = e.shiftKey ? 0.1 : 0.01;
+          } else if (parsed.unit === '' && opts.prop !== 'font-weight') {
+            step = e.shiftKey ? 1 : 0.1;
+          }
+          var dir = e.key === 'ArrowUp' ? 1 : -1;
+          var newNum = Math.round((parsed.num + step * dir) * 100) / 100;
+          input.value = newNum + parsed.unit;
+          if (opts.onChange) opts.onChange(input.value);
+        }
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          input.value = originalValue;
+          if (opts.onChange) opts.onChange(originalValue);
+          input.blur();
+        }
+        e.stopPropagation();
+      });
+
+      input.addEventListener('change', function () {
+        if (opts.onChange) opts.onChange(input.value);
+      });
+
+      input.addEventListener('focus', function () { state.inspectEditingValue = true; });
+      input.addEventListener('blur', function () { state.inspectEditingValue = false; });
+    }
+
+    field.appendChild(input);
+    return field;
+  }
+
+  function createSpacingInput(value, opts) {
+    opts = opts || {};
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'dn-inspect-spacing-input';
+    if (opts.dimmed) input.classList.add('dimmed');
+    input.value = parseInt(value, 10) || 0;
+    var originalValue = value;
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        var cur = parseInt(input.value, 10) || 0;
+        var step = e.shiftKey ? 10 : 1;
+        var dir = e.key === 'ArrowUp' ? 1 : -1;
+        var newNum = Math.max(0, cur + step * dir);
+        input.value = newNum;
+        if (opts.onChange) opts.onChange(newNum + (opts.unit || 'px'));
+      }
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        input.value = parseInt(originalValue, 10) || 0;
+        if (opts.onChange) opts.onChange(originalValue);
+        input.blur();
+      }
+      e.stopPropagation();
+    });
+
+    input.addEventListener('change', function () {
+      var val = input.value;
+      if (!/px|rem|em|%/.test(val)) val = val + (opts.unit || 'px');
+      if (opts.onChange) opts.onChange(val);
+    });
+
+    input.addEventListener('focus', function () { state.inspectEditingValue = true; });
+    input.addEventListener('blur', function () { state.inspectEditingValue = false; });
+
+    return input;
+  }
+
+  function createEnumInput(currentValue, options, onChange) {
+    var select = document.createElement('select');
+    select.className = 'dn-inspect-select';
+    var originalValue = currentValue;
+
+    if (options.indexOf(currentValue) === -1) {
+      var opt = document.createElement('option');
+      opt.value = currentValue;
+      opt.textContent = currentValue;
+      select.appendChild(opt);
+    }
+    options.forEach(function (val) {
+      var opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = val;
+      if (val === currentValue) opt.selected = true;
+      select.appendChild(opt);
+    });
+
+    select.addEventListener('change', function () { onChange(select.value); });
+    select.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        select.value = originalValue;
+        onChange(originalValue);
+        select.blur();
+      }
+      e.stopPropagation();
+    });
+    select.addEventListener('focus', function () { state.inspectEditingValue = true; });
+    select.addEventListener('blur', function () { state.inspectEditingValue = false; });
+
+    return select;
+  }
+
+  function createColorInput(value, onChange) {
+    var wrapper = document.createElement('div');
+    wrapper.style.display = 'flex';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.gap = '6px';
+    wrapper.style.flex = '1';
+    var originalValue = value;
+
+    var chip = document.createElement('div');
+    chip.className = 'dn-inspect-color-chip';
+    chip.style.backgroundColor = value;
+    var picker = document.createElement('input');
+    picker.type = 'color';
+    picker.value = rgbToHex(value);
+    chip.appendChild(picker);
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'dn-inspect-input';
+    input.value = rgbToHex(value);
+
+    picker.addEventListener('input', function () {
+      input.value = picker.value;
+      chip.style.backgroundColor = picker.value;
+      onChange(picker.value);
+    });
+
+    input.addEventListener('change', function () {
+      chip.style.backgroundColor = input.value;
+      try { picker.value = rgbToHex(input.value); } catch (e) {}
+      onChange(input.value);
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        input.value = rgbToHex(originalValue);
+        chip.style.backgroundColor = originalValue;
+        onChange(originalValue);
+        input.blur();
+      }
+      if (e.key === 'Enter') input.blur();
+      e.stopPropagation();
+    });
+
+    input.addEventListener('focus', function () { state.inspectEditingValue = true; });
+    input.addEventListener('blur', function () { state.inspectEditingValue = false; });
+
+    wrapper.appendChild(chip);
+    wrapper.appendChild(input);
+    return wrapper;
+  }
+
+  // --- Position Section ---
+
+  function buildPositionSection(panel, el, rect) {
+    var s = createInspectSection('POSITION');
+    var grid = document.createElement('div');
+    grid.className = 'dn-inspect-grid';
+
+    var x = Math.round(rect.left + window.scrollX);
+    var y = Math.round(rect.top + window.scrollY);
+    var selector = state.inspectTarget ? state.inspectTarget.selector : '';
+
+    grid.appendChild(createCompactInput('X', x, {
+      labelWidth: 14,
+      onChange: function (val) {
+        var newX = parseInt(val, 10);
+        if (isNaN(newX)) return;
+        var deltaX = newX - x;
+        var deltaY = 0;
+        var edit = state.cssEdits.find(function (e) {
+          return e.selector === selector && e.page === currentPage();
+        });
+        if (edit) {
+          var posChange = edit.changes.find(function (c) { return c.property === 'position'; });
+          if (posChange) deltaY = posChange.after.y - posChange.before.y;
+        }
+        recordPositionEdit(selector, el, { x: x, y: y }, { x: newX, y: y + deltaY });
+        el.style.transform = 'translate(' + deltaX + 'px, ' + deltaY + 'px)';
+        saveState();
+        autoExport();
+      },
+    }));
+
+    grid.appendChild(createCompactInput('Y', y, {
+      labelWidth: 14,
+      onChange: function (val) {
+        var newY = parseInt(val, 10);
+        if (isNaN(newY)) return;
+        var deltaX = 0;
+        var deltaY = newY - y;
+        var edit = state.cssEdits.find(function (e) {
+          return e.selector === selector && e.page === currentPage();
+        });
+        if (edit) {
+          var posChange = edit.changes.find(function (c) { return c.property === 'position'; });
+          if (posChange) deltaX = posChange.after.x - posChange.before.x;
+        }
+        recordPositionEdit(selector, el, { x: x, y: y }, { x: x + deltaX, y: newY });
+        el.style.transform = 'translate(' + deltaX + 'px, ' + deltaY + 'px)';
+        saveState();
+        autoExport();
+      },
+    }));
+
+    s.body.appendChild(grid);
+    panel.appendChild(s.section);
+  }
+
+  function recordPositionEdit(selector, el, before, after) {
+    if (!state.inspectTarget) return;
+    pushUndo('css edit');
+
+    var existing = state.cssEdits.find(function (e) {
+      return e.selector === selector && e.page === currentPage();
+    });
+
+    var posChange = { property: 'position', type: 'move', before: before, after: after };
+
+    if (existing) {
+      var change = existing.changes.find(function (c) { return c.property === 'position'; });
+      if (change) {
+        change.after = after;
+      } else {
+        existing.changes.push(posChange);
+      }
+      existing.timestamp = new Date().toISOString();
+    } else {
+      var meta = state.inspectTarget.meta;
+      state.cssEdits.push({
+        id: state.nextCssEditId++,
+        selector: selector,
+        tag: el.tagName,
+        textPreview: meta.textPreview || '',
+        page: currentPage(),
+        bounds: meta.boundingBox,
+        reverted: false,
+        changes: [posChange],
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    updateRevertButton(selector);
+  }
+
+  // --- Size Section ---
+
+  function buildSizeSection(panel, el, computed) {
+    var s = createInspectSection('SIZE');
+    var grid = document.createElement('div');
+    grid.className = 'dn-inspect-grid';
+
+    grid.appendChild(createCompactInput('W', computed.width, {
+      labelWidth: 14, prop: 'width',
+      onChange: function (val) { applyInspectValue(el, 'width', val, computed.width); },
+    }));
+    grid.appendChild(createCompactInput('H', computed.height, {
+      labelWidth: 14, prop: 'height',
+      onChange: function (val) { applyInspectValue(el, 'height', val, computed.height); },
+    }));
+
+    s.body.appendChild(grid);
+
+    var grid2 = document.createElement('div');
+    grid2.className = 'dn-inspect-grid';
+    grid2.style.marginTop = '6px';
+
+    var rotation = computed.transform;
+    var rotDeg = '0°';
+    if (rotation && rotation !== 'none') {
+      var match = rotation.match(/matrix\(([^,]+),\s*([^,]+)/);
+      if (match) {
+        rotDeg = Math.round(Math.atan2(parseFloat(match[2]), parseFloat(match[1])) * 180 / Math.PI) + '°';
+      }
+    }
+
+    grid2.appendChild(createCompactInput('⟳', rotDeg, { labelWidth: 14, readOnly: true }));
+    grid2.appendChild(createCompactInput('◼', computed.borderRadius, {
+      labelWidth: 14, prop: 'border-radius',
+      dimmed: computed.borderRadius === '0px',
+      onChange: function (val) { applyInspectValue(el, 'border-radius', val, computed.borderRadius); },
+    }));
+
+    s.body.appendChild(grid2);
+    panel.appendChild(s.section);
+  }
+
+  // --- Padding Section ---
+
+  function buildPaddingSection(panel, el, computed) {
+    var s = createInspectSection('PADDING', 'padding');
+    var layout = document.createElement('div');
+    layout.className = 'dn-inspect-spacing';
+
+    var sides = ['Top', 'Right', 'Bottom', 'Left'];
+    var values = sides.map(function (side) { return computed.getPropertyValue('padding-' + side.toLowerCase()); });
+
+    layout.appendChild(createSpacingInput(values[0], {
+      dimmed: values[0] === '0px',
+      onChange: function (val) { applyInspectValue(el, 'padding-top', val, values[0]); },
+    }));
+
+    var midRow = document.createElement('div');
+    midRow.className = 'dn-inspect-spacing-row';
+    midRow.appendChild(createSpacingInput(values[3], {
+      dimmed: values[3] === '0px',
+      onChange: function (val) { applyInspectValue(el, 'padding-left', val, values[3]); },
+    }));
+    var centerBox = document.createElement('div');
+    centerBox.className = 'dn-inspect-spacing-center padding-box';
+    midRow.appendChild(centerBox);
+    midRow.appendChild(createSpacingInput(values[1], {
+      dimmed: values[1] === '0px',
+      onChange: function (val) { applyInspectValue(el, 'padding-right', val, values[1]); },
+    }));
+    layout.appendChild(midRow);
+
+    layout.appendChild(createSpacingInput(values[2], {
+      dimmed: values[2] === '0px',
+      onChange: function (val) { applyInspectValue(el, 'padding-bottom', val, values[2]); },
+    }));
+
+    s.body.appendChild(layout);
+    panel.appendChild(s.section);
+  }
+
+  // --- Margin Section ---
+
+  function buildMarginSection(panel, el, computed) {
+    var s = createInspectSection('MARGIN', 'margin');
+    var layout = document.createElement('div');
+    layout.className = 'dn-inspect-spacing';
+
+    var sides = ['Top', 'Right', 'Bottom', 'Left'];
+    var values = sides.map(function (side) { return computed.getPropertyValue('margin-' + side.toLowerCase()); });
+
+    layout.appendChild(createSpacingInput(values[0], {
+      dimmed: values[0] === '0px',
+      onChange: function (val) { applyInspectValue(el, 'margin-top', val, values[0]); },
+    }));
+
+    var midRow = document.createElement('div');
+    midRow.className = 'dn-inspect-spacing-row';
+    midRow.appendChild(createSpacingInput(values[3], {
+      dimmed: values[3] === '0px',
+      onChange: function (val) { applyInspectValue(el, 'margin-left', val, values[3]); },
+    }));
+    var centerBox = document.createElement('div');
+    centerBox.className = 'dn-inspect-spacing-center margin-box';
+    midRow.appendChild(centerBox);
+    midRow.appendChild(createSpacingInput(values[1], {
+      dimmed: values[1] === '0px',
+      onChange: function (val) { applyInspectValue(el, 'margin-right', val, values[1]); },
+    }));
+    layout.appendChild(midRow);
+
+    layout.appendChild(createSpacingInput(values[2], {
+      dimmed: values[2] === '0px',
+      onChange: function (val) { applyInspectValue(el, 'margin-bottom', val, values[2]); },
+    }));
+
+    s.body.appendChild(layout);
+    panel.appendChild(s.section);
+  }
+
+  // --- Layout Section ---
+
+  function buildLayoutSection(panel, el, computed) {
+    var display = computed.display;
+    if (!/^(flex|grid|inline-flex|inline-grid)$/.test(display)) return;
+
+    var s = createInspectSection('LAYOUT', 'display');
+    var grid = document.createElement('div');
+    grid.className = 'dn-inspect-grid';
+
+    var displayField = document.createElement('div');
+    displayField.className = 'dn-inspect-field';
+    var displayLabel = document.createElement('span');
+    displayLabel.className = 'dn-inspect-field-label';
+    displayLabel.textContent = 'display';
+    displayField.appendChild(displayLabel);
+    displayField.appendChild(createEnumInput(display, ['block','flex','grid','inline','inline-block','inline-flex','none'], function (val) {
+      applyInspectValue(el, 'display', val, display);
+    }));
+    grid.appendChild(displayField);
+
+    grid.appendChild(createCompactInput('gap', computed.gap === 'normal' ? '0' : computed.gap, {
+      labelWidth: 24, prop: 'gap',
+      dimmed: computed.gap === 'normal' || computed.gap === '0px',
+      onChange: function (val) { applyInspectValue(el, 'gap', val, computed.gap); },
+    }));
+
+    if (/^(flex|inline-flex)$/.test(display)) {
+      var dirField = document.createElement('div');
+      dirField.className = 'dn-inspect-field';
+      var dirLabel = document.createElement('span');
+      dirLabel.className = 'dn-inspect-field-label';
+      dirLabel.textContent = 'direction';
+      dirField.appendChild(dirLabel);
+      dirField.appendChild(createEnumInput(computed.flexDirection, ['row','row-reverse','column','column-reverse'], function (val) {
+        applyInspectValue(el, 'flex-direction', val, computed.flexDirection);
+      }));
+      grid.appendChild(dirField);
+    }
+
+    var justifyField = document.createElement('div');
+    justifyField.className = 'dn-inspect-field';
+    var justifyLabel = document.createElement('span');
+    justifyLabel.className = 'dn-inspect-field-label';
+    justifyLabel.textContent = 'justify';
+    justifyField.appendChild(justifyLabel);
+    justifyField.appendChild(createEnumInput(computed.justifyContent, ['flex-start','flex-end','center','space-between','space-around','space-evenly'], function (val) {
+      applyInspectValue(el, 'justify-content', val, computed.justifyContent);
+    }));
+    grid.appendChild(justifyField);
+
+    var alignField = document.createElement('div');
+    alignField.className = 'dn-inspect-field';
+    var alignLabel = document.createElement('span');
+    alignLabel.className = 'dn-inspect-field-label';
+    alignLabel.textContent = 'align';
+    alignField.appendChild(alignLabel);
+    alignField.appendChild(createEnumInput(computed.alignItems, ['stretch','flex-start','flex-end','center','baseline'], function (val) {
+      applyInspectValue(el, 'align-items', val, computed.alignItems);
+    }));
+    grid.appendChild(alignField);
+
+    s.body.appendChild(grid);
+    panel.appendChild(s.section);
+  }
+
+  // --- Appearance Section ---
+
+  function buildAppearanceSection(panel, el, computed) {
+    var s = createInspectSection('APPEARANCE');
+
+    var fillRow = document.createElement('div');
+    fillRow.className = 'dn-inspect-color-row';
+    var fillLabel = document.createElement('span');
+    fillLabel.className = 'dn-inspect-field-label';
+    fillLabel.style.width = '36px';
+    fillLabel.textContent = 'fill';
+    fillRow.appendChild(fillLabel);
+    fillRow.appendChild(createColorInput(computed.backgroundColor, function (val) {
+      applyInspectValue(el, 'background-color', val, computed.backgroundColor);
+    }));
+    s.body.appendChild(fillRow);
+
+    if (computed.borderTopStyle !== 'none') {
+      var strokeRow = document.createElement('div');
+      strokeRow.className = 'dn-inspect-color-row';
+      strokeRow.style.marginTop = '6px';
+      var strokeLabel = document.createElement('span');
+      strokeLabel.className = 'dn-inspect-field-label';
+      strokeLabel.style.width = '36px';
+      strokeLabel.textContent = 'stroke';
+      strokeRow.appendChild(strokeLabel);
+      strokeRow.appendChild(createColorInput(computed.borderTopColor, function (val) {
+        applyInspectValue(el, 'border-color', val, computed.borderTopColor);
+      }));
+      var widthField = createCompactInput('', computed.borderTopWidth, {
+        labelWidth: 0, prop: 'border-width',
+        onChange: function (val) { applyInspectValue(el, 'border-width', val, computed.borderTopWidth); },
+      });
+      var widthInp = widthField.querySelector('input');
+      if (widthInp) { widthInp.style.width = '36px'; widthInp.style.flex = 'none'; }
+      strokeRow.appendChild(widthField);
+      s.body.appendChild(strokeRow);
+    }
+
+    var opacityRow = document.createElement('div');
+    opacityRow.className = 'dn-inspect-field';
+    opacityRow.style.marginTop = '6px';
+    var opacityLabel = document.createElement('span');
+    opacityLabel.className = 'dn-inspect-field-label';
+    opacityLabel.style.width = '36px';
+    opacityLabel.textContent = 'opacity';
+    opacityRow.appendChild(opacityLabel);
+    var opacityVal = Math.round(parseFloat(computed.opacity) * 100) + '%';
+    var opacityInput = document.createElement('input');
+    opacityInput.type = 'text';
+    opacityInput.className = 'dn-inspect-input';
+    opacityInput.value = opacityVal;
+    var opacityOriginal = computed.opacity;
+
+    opacityInput.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        var cur = parseInt(opacityInput.value, 10) || 100;
+        var step = e.shiftKey ? 10 : 1;
+        var dir = e.key === 'ArrowUp' ? 1 : -1;
+        var newVal = Math.max(0, Math.min(100, cur + step * dir));
+        opacityInput.value = newVal + '%';
+        applyInspectValue(el, 'opacity', String(newVal / 100), opacityOriginal);
+      }
+      if (e.key === 'Enter') { e.preventDefault(); opacityInput.blur(); }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        opacityInput.value = Math.round(parseFloat(opacityOriginal) * 100) + '%';
+        applyInspectValue(el, 'opacity', opacityOriginal, opacityOriginal);
+        opacityInput.blur();
+      }
+      e.stopPropagation();
+    });
+
+    opacityInput.addEventListener('change', function () {
+      var val = parseInt(opacityInput.value, 10);
+      if (isNaN(val)) return;
+      applyInspectValue(el, 'opacity', String(Math.max(0, Math.min(100, val)) / 100), opacityOriginal);
+    });
+
+    opacityInput.addEventListener('focus', function () { state.inspectEditingValue = true; });
+    opacityInput.addEventListener('blur', function () { state.inspectEditingValue = false; });
+
+    opacityRow.appendChild(opacityInput);
+    s.body.appendChild(opacityRow);
+
+    panel.appendChild(s.section);
+  }
+
+  // --- Typography Section ---
+
+  function buildTypographySection(panel, el, computed) {
+    var hasText = false;
+    for (var i = 0; i < el.childNodes.length; i++) {
+      if (el.childNodes[i].nodeType === 3 && el.childNodes[i].textContent.trim()) { hasText = true; break; }
+    }
+    if (!hasText) return;
+
+    var s = createInspectSection('TYPOGRAPHY');
+
+    s.body.appendChild(createCompactInput('font', computed.fontFamily.split(',')[0].replace(/['"]/g, ''), {
+      labelWidth: 36, prop: 'font-family',
+      onChange: function (val) { applyInspectValue(el, 'font-family', val, computed.fontFamily); },
+    }));
+
+    var grid1 = document.createElement('div');
+    grid1.className = 'dn-inspect-grid';
+    grid1.style.marginTop = '6px';
+    grid1.appendChild(createCompactInput('size', computed.fontSize, {
+      labelWidth: 36, prop: 'font-size',
+      onChange: function (val) { applyInspectValue(el, 'font-size', val, computed.fontSize); },
+    }));
+
+    var weightField = document.createElement('div');
+    weightField.className = 'dn-inspect-field';
+    var weightLabel = document.createElement('span');
+    weightLabel.className = 'dn-inspect-field-label';
+    weightLabel.style.width = '36px';
+    weightLabel.textContent = 'weight';
+    weightField.appendChild(weightLabel);
+    weightField.appendChild(createEnumInput(computed.fontWeight, ['100','200','300','400','500','600','700','800','900'], function (val) {
+      applyInspectValue(el, 'font-weight', val, computed.fontWeight);
+    }));
+    grid1.appendChild(weightField);
+    s.body.appendChild(grid1);
+
+    var grid2 = document.createElement('div');
+    grid2.className = 'dn-inspect-grid';
+    grid2.style.marginTop = '6px';
+    grid2.appendChild(createCompactInput('line-h', computed.lineHeight, {
+      labelWidth: 36, prop: 'line-height',
+      onChange: function (val) { applyInspectValue(el, 'line-height', val, computed.lineHeight); },
+    }));
+    grid2.appendChild(createCompactInput('spacing', computed.letterSpacing, {
+      labelWidth: 36, prop: 'letter-spacing',
+      dimmed: computed.letterSpacing === 'normal',
+      onChange: function (val) { applyInspectValue(el, 'letter-spacing', val, computed.letterSpacing); },
+    }));
+    s.body.appendChild(grid2);
+
+    var colorRow = document.createElement('div');
+    colorRow.className = 'dn-inspect-color-row';
+    colorRow.style.marginTop = '6px';
+    var colorLabel = document.createElement('span');
+    colorLabel.className = 'dn-inspect-field-label';
+    colorLabel.style.width = '36px';
+    colorLabel.textContent = 'color';
+    colorRow.appendChild(colorLabel);
+    colorRow.appendChild(createColorInput(computed.color, function (val) {
+      applyInspectValue(el, 'color', val, computed.color);
+    }));
+    s.body.appendChild(colorRow);
+
+    panel.appendChild(s.section);
+  }
+
+  // --- Effects Section ---
+
+  function buildEffectsSection(panel, el, computed) {
+    if (computed.boxShadow === 'none') return;
+
+    var s = createInspectSection('EFFECTS', 'box-shadow');
+
+    s.body.appendChild(createCompactInput('shadow', computed.boxShadow, {
+      labelWidth: 40, prop: 'box-shadow',
+      onChange: function (val) { applyInspectValue(el, 'box-shadow', val, computed.boxShadow); },
+    }));
+    var inp = s.body.querySelector('.dn-inspect-input');
+    if (inp) inp.style.textAlign = 'left';
+
+    panel.appendChild(s.section);
+  }
+
+  // =========================================================================
+  // INSPECT MODE — OLD CODE (to be removed in Task 6)
   // =========================================================================
 
   var INSPECT_PROPERTIES = {
