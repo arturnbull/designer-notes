@@ -153,7 +153,7 @@
   // Auto-export: saves markdown to server after every comment change
   function autoExport() {
     if (!serverAvailable) return;
-    if (state.comments.length === 0 && state.textEdits.length === 0) return;
+    if (state.comments.length === 0 && state.textEdits.length === 0 && state.cssEdits.length === 0) return;
     var md = generateMarkdown();
     var dateSlug = new Date().toISOString().substring(0, 10);
     saveToServer('feedback-' + dateSlug + '.md', md).catch(function () {});
@@ -183,7 +183,10 @@
     state.nextId = 1;
     state.textEdits = [];
     state.nextTextEditId = 1;
+    state.cssEdits = [];
+    state.nextCssEditId = 1;
     state.editingCommentId = null;
+    inspectOriginalValues = {};
     undoStack.length = 0;
     saveState();
     closePopover();
@@ -3177,7 +3180,8 @@
   function updateBadge() {
     var commentCount = pageComments().length;
     var textEditCount = state.textEdits.filter(function (te) { return te.page === currentPage(); }).length;
-    var count = commentCount + textEditCount;
+    var cssEditCount = state.cssEdits.filter(function (e) { return e.page === currentPage(); }).length;
+    var count = commentCount + textEditCount + cssEditCount;
     badgeEl.textContent = count > 0 ? count : '';
     badgeEl.setAttribute('data-count', count);
   }
@@ -3302,7 +3306,7 @@
     var all = state.comments;
     var vw = window.innerWidth;
     var vh = window.innerHeight;
-    var md = '# UI Feedback\nGenerated: ' + dateStr + '\nTotal comments: ' + all.length + '\nTotal text edits: ' + state.textEdits.length + '\nViewport: ' + vw + 'x' + vh + '\n\n---\n';
+    var md = '# UI Feedback\nGenerated: ' + dateStr + '\nTotal comments: ' + all.length + '\nTotal text edits: ' + state.textEdits.length + '\nTotal CSS edits: ' + state.cssEdits.length + '\nViewport: ' + vw + 'x' + vh + '\n\n---\n';
 
     var pages = {};
     all.forEach(function (c) { if (!pages[c.page]) pages[c.page] = []; pages[c.page].push(c); });
@@ -3351,12 +3355,44 @@
       });
     }
 
+    // CSS edits section
+    var cssEditsByPage = {};
+    state.cssEdits.forEach(function (edit) {
+      if (!cssEditsByPage[edit.page]) cssEditsByPage[edit.page] = [];
+      cssEditsByPage[edit.page].push(edit);
+    });
+
+    if (state.cssEdits.length > 0) {
+      Object.keys(cssEditsByPage).forEach(function (page) {
+        md += '\n## CSS Edits — Page: ' + page + '\n\n';
+        cssEditsByPage[page].forEach(function (edit, i) {
+          md += '### Element ' + (i + 1) + '\n';
+          md += '**Element:** `' + edit.selector + '`\n';
+          md += '**Tag:** ' + edit.tag;
+          if (edit.textPreview) md += ' | **Text:** "' + edit.textPreview + '"';
+          md += '\n';
+          if (edit.bounds) {
+            md += '**Element bounds:** ' + Math.round(edit.bounds.width) + 'x' + Math.round(edit.bounds.height) + ' at (' + Math.round(edit.bounds.x) + ', ' + Math.round(edit.bounds.y) + ')\n';
+          }
+          md += '**Status:** ' + (edit.reverted ? 'reverted' : 'applied') + '\n\n';
+
+          var changes = collapseSpacingForMarkdown(edit.changes);
+          md += '| Property | Before | After |\n';
+          md += '|----------|--------|-------|\n';
+          changes.forEach(function (c) {
+            md += '| ' + c.property + ' | ' + c.before + ' | ' + c.after + ' |\n';
+          });
+          md += '\n---\n\n';
+        });
+      });
+    }
+
     md += '\n*Exported by designer-notes*\n';
     return md;
   }
 
   function copyToClipboard() {
-    if (state.comments.length === 0 && state.textEdits.length === 0) { showToast('No feedback to copy'); return; }
+    if (state.comments.length === 0 && state.textEdits.length === 0 && state.cssEdits.length === 0) { showToast('No feedback to copy'); return; }
     var md = generateMarkdown();
     navigator.clipboard.writeText(md).then(function () {
       showToast('Copied ' + state.comments.length + ' comments');
