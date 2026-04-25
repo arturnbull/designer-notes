@@ -2394,9 +2394,55 @@
     openInspectPanel(el, selector, meta);
   }
 
-  // Stubs — will be implemented in Tasks 6-7
-  function toggleRevertElement() {}
-  function updateRevertButton(selector) {}
+  function toggleRevertElement() {
+    if (!state.inspectTarget) return;
+    var selector = state.inspectTarget.selector;
+    var el = state.inspectTarget.element;
+
+    var edit = state.cssEdits.find(function (e) {
+      return e.selector === selector && e.page === currentPage();
+    });
+    if (!edit) return;
+
+    pushUndo('css revert');
+
+    if (edit.reverted) {
+      edit.changes.forEach(function (c) {
+        el.style.setProperty(c.property, c.after);
+      });
+      edit.reverted = false;
+    } else {
+      edit.changes.forEach(function (c) {
+        if (inspectOriginalValues[selector] && inspectOriginalValues[selector][c.property] === c.before) {
+          el.style.removeProperty(c.property);
+        } else {
+          el.style.setProperty(c.property, c.before);
+        }
+      });
+      edit.reverted = true;
+    }
+
+    updateRevertButton(selector);
+    refreshInspectPanel();
+    saveState();
+    autoExport();
+  }
+
+  function updateRevertButton(selector) {
+    if (!inspectPanelEl) return;
+    var btn = inspectPanelEl.querySelector('.dn-inspect-revert-btn');
+    if (!btn) return;
+    var edit = state.cssEdits.find(function (e) {
+      return e.selector === selector && e.page === currentPage();
+    });
+    if (edit && edit.changes.length > 0) {
+      btn.style.display = 'flex';
+      btn.textContent = edit.reverted ? '↪' : '↩';
+      btn.title = edit.reverted ? 'Re-apply changes' : 'Revert changes';
+    } else {
+      btn.style.display = 'none';
+    }
+  }
 
   // =========================================================================
   // INSPECT MODE — PROPERTY DETECTION & SECTIONS
@@ -2785,8 +2831,82 @@
     return input;
   }
 
-  // Stub — will be implemented in Task 7
-  function applyInspectValue(el, prop, newValue, computedOriginal) {}
+  // =========================================================================
+  // INSPECT MODE — LIVE PREVIEW & EDIT RECORDING
+  // =========================================================================
+
+  var inspectOriginalValues = {};
+
+  function getOriginalValue(selector, prop, computedValue) {
+    if (!inspectOriginalValues[selector]) inspectOriginalValues[selector] = {};
+    if (!(prop in inspectOriginalValues[selector])) {
+      inspectOriginalValues[selector][prop] = computedValue;
+    }
+    return inspectOriginalValues[selector][prop];
+  }
+
+  function applyInspectValue(el, prop, newValue, computedOriginal) {
+    if (!state.inspectTarget) return;
+    var selector = state.inspectTarget.selector;
+    var original = getOriginalValue(selector, prop, computedOriginal);
+
+    el.style.setProperty(prop, newValue);
+
+    if (newValue === original) {
+      el.style.removeProperty(prop);
+      removeFromCssEdit(selector, prop);
+    } else {
+      recordCssEdit(selector, prop, original, newValue);
+    }
+
+    updateRevertButton(selector);
+    saveState();
+    autoExport();
+  }
+
+  function recordCssEdit(selector, property, before, after) {
+    var target = state.inspectTarget;
+    if (!target) return;
+
+    var existing = state.cssEdits.find(function (e) {
+      return e.selector === selector && e.page === currentPage();
+    });
+
+    if (existing) {
+      var change = existing.changes.find(function (c) { return c.property === property; });
+      if (change) {
+        change.after = after;
+      } else {
+        existing.changes.push({ property: property, before: before, after: after });
+      }
+      existing.timestamp = new Date().toISOString();
+    } else {
+      pushUndo('css edit');
+      var meta = target.meta;
+      state.cssEdits.push({
+        id: state.nextCssEditId++,
+        selector: selector,
+        tag: target.element.tagName,
+        textPreview: meta.textPreview || '',
+        page: currentPage(),
+        bounds: meta.boundingBox,
+        reverted: false,
+        changes: [{ property: property, before: before, after: after }],
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  function removeFromCssEdit(selector, property) {
+    var edit = state.cssEdits.find(function (e) {
+      return e.selector === selector && e.page === currentPage();
+    });
+    if (!edit) return;
+    edit.changes = edit.changes.filter(function (c) { return c.property !== property; });
+    if (edit.changes.length === 0) {
+      state.cssEdits = state.cssEdits.filter(function (e) { return e !== edit; });
+    }
+  }
 
   // =========================================================================
   // TEXT EDIT — DETECTION & HOVER
