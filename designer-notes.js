@@ -70,6 +70,10 @@
     state.nextTextEditId = entry.nextTextEditId || (state.textEdits.length + 1);
     state.cssEdits = entry.cssEdits || [];
     state.nextCssEditId = entry.nextCssEditId || (state.cssEdits.length + 1);
+    clearAllInspectInlineStyles();
+    reapplyCssEdits();
+    closeInspectPanel();
+    deselectInspectTarget();
     saveState();
     closePopover();
     dismissTextEdit();
@@ -2137,6 +2141,7 @@
     if (!state.inspectMode) {
       clearInspectHover();
       closeInspectPanel();
+      deselectInspectTarget();
     }
     updateToggleButton();
   }
@@ -2916,6 +2921,8 @@
     var target = state.inspectTarget;
     if (!target) return;
 
+    pushUndo('css edit');
+
     var existing = state.cssEdits.find(function (e) {
       return e.selector === selector && e.page === currentPage();
     });
@@ -2929,7 +2936,6 @@
       }
       existing.timestamp = new Date().toISOString();
     } else {
-      pushUndo('css edit');
       var meta = target.meta;
       state.cssEdits.push({
         id: state.nextCssEditId++,
@@ -2954,6 +2960,16 @@
     if (edit.changes.length === 0) {
       state.cssEdits = state.cssEdits.filter(function (e) { return e !== edit; });
     }
+  }
+
+  function clearAllInspectInlineStyles() {
+    Object.keys(inspectOriginalValues).forEach(function (selector) {
+      var el = document.querySelector(selector);
+      if (!el) return;
+      Object.keys(inspectOriginalValues[selector]).forEach(function (prop) {
+        el.style.removeProperty(prop);
+      });
+    });
   }
 
   function reapplyCssEdits() {
@@ -3414,7 +3430,7 @@
           md += '### Element ' + (i + 1) + '\n';
           md += '**Element:** `' + edit.selector + '`\n';
           md += '**Tag:** ' + edit.tag;
-          if (edit.textPreview) md += ' | **Text:** "' + edit.textPreview + '"';
+          if (edit.textPreview) md += ' | **Text:** "' + edit.textPreview.replace(/\|/g, '\\|').replace(/"/g, '\\"') + '"';
           md += '\n';
           if (edit.bounds) {
             md += '**Element bounds:** ' + Math.round(edit.bounds.width) + 'x' + Math.round(edit.bounds.height) + ' at (' + Math.round(edit.bounds.x) + ', ' + Math.round(edit.bounds.y) + ')\n';
