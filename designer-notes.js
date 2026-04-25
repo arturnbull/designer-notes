@@ -23,6 +23,11 @@
     editingCommentId: null,
     activeTextEdit: null, // { element, before, selector, tagName, bounds }
     panelOpen: false,
+    inspectMode: false,
+    inspectTarget: null,         // { element, selector, meta }
+    inspectEditingValue: false,  // true when user is focused on inspector panel input
+    cssEdits: [],
+    nextCssEditId: 1,
     skills: [],
     directives: [],
     preferences: {},
@@ -50,6 +55,8 @@
       nextId: state.nextId,
       textEdits: JSON.parse(JSON.stringify(state.textEdits)),
       nextTextEditId: state.nextTextEditId,
+      cssEdits: JSON.parse(JSON.stringify(state.cssEdits)),
+      nextCssEditId: state.nextCssEditId,
     });
     if (undoStack.length > UNDO_MAX) undoStack.shift();
   }
@@ -61,6 +68,8 @@
     state.nextId = entry.nextId;
     state.textEdits = entry.textEdits || [];
     state.nextTextEditId = entry.nextTextEditId || (state.textEdits.length + 1);
+    state.cssEdits = entry.cssEdits || [];
+    state.nextCssEditId = entry.nextCssEditId || (state.cssEdits.length + 1);
     saveState();
     closePopover();
     dismissTextEdit();
@@ -82,6 +91,8 @@
         nextId: state.nextId,
         textEdits: state.textEdits,
         nextTextEditId: state.nextTextEditId,
+        cssEdits: state.cssEdits,
+        nextCssEditId: state.nextCssEditId,
       }));
     } catch (e) {}
   }
@@ -94,6 +105,8 @@
         state.nextId = data.nextId || state.comments.length + 1;
         state.textEdits = data.textEdits || [];
         state.nextTextEditId = data.nextTextEditId || (state.textEdits.length + 1);
+        state.cssEdits = data.cssEdits || [];
+        state.nextCssEditId = data.nextCssEditId || (state.cssEdits.length + 1);
         // Migration: strip removed fields from old data
         state.comments.forEach(function (c) {
           delete c.resolved;
