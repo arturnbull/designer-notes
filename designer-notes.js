@@ -2908,6 +2908,25 @@
     }
   }
 
+  function reapplyCssEdits() {
+    var page = currentPage();
+    state.cssEdits.forEach(function (edit) {
+      if (edit.page !== page) return;
+      if (edit.reverted) return;
+      var el = document.querySelector(edit.selector);
+      if (!el) {
+        edit._stale = true;
+        return;
+      }
+      edit._stale = false;
+      var computed = window.getComputedStyle(el);
+      edit.changes.forEach(function (c) {
+        getOriginalValue(edit.selector, c.property, computed.getPropertyValue(c.property));
+        el.style.setProperty(c.property, c.after);
+      });
+    });
+  }
+
   // =========================================================================
   // TEXT EDIT — DETECTION & HOVER
   // =========================================================================
@@ -3365,6 +3384,7 @@
     rerenderAllPins();
     rerenderAllTextIndicators();
     updateBadge();
+    reapplyCssEdits();
 
     createInspectOverlays();
     document.addEventListener('mousemove', handleInspectHover, true);
