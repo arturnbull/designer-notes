@@ -2448,12 +2448,20 @@
 
     if (edit.reverted) {
       edit.changes.forEach(function (c) {
-        el.style.setProperty(c.property, c.after);
+        if (c.property === 'position' && c.type === 'move') {
+          var dx = c.after.x - c.before.x;
+          var dy = c.after.y - c.before.y;
+          el.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+        } else {
+          el.style.setProperty(c.property, c.after);
+        }
       });
       edit.reverted = false;
     } else {
       edit.changes.forEach(function (c) {
-        if (inspectOriginalValues[selector] && inspectOriginalValues[selector][c.property] === c.before) {
+        if (c.property === 'position' && c.type === 'move') {
+          el.style.removeProperty('transform');
+        } else if (inspectOriginalValues[selector] && inspectOriginalValues[selector][c.property] === c.before) {
           el.style.removeProperty(c.property);
         } else {
           el.style.setProperty(c.property, c.before);
@@ -3305,8 +3313,14 @@
       edit._stale = false;
       var computed = window.getComputedStyle(el);
       edit.changes.forEach(function (c) {
-        getOriginalValue(edit.selector, c.property, computed.getPropertyValue(c.property));
-        el.style.setProperty(c.property, c.after);
+        if (c.property === 'position' && c.type === 'move') {
+          var dx = c.after.x - c.before.x;
+          var dy = c.after.y - c.before.y;
+          el.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+        } else {
+          getOriginalValue(edit.selector, c.property, computed.getPropertyValue(c.property));
+          el.style.setProperty(c.property, c.after);
+        }
       });
     });
   }
@@ -3761,7 +3775,11 @@
           md += '| Property | Before | After |\n';
           md += '|----------|--------|-------|\n';
           changes.forEach(function (c) {
-            md += '| ' + c.property + ' | ' + c.before + ' | ' + c.after + ' |\n';
+            if (c.property === 'position' && c.type === 'move') {
+              md += '| position | (' + c.before.x + ', ' + c.before.y + ') | (' + c.after.x + ', ' + c.after.y + ') |\n';
+            } else {
+              md += '| ' + c.property + ' | ' + c.before + ' | ' + c.after + ' |\n';
+            }
           });
           md += '\n---\n\n';
         });
