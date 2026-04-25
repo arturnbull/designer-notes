@@ -2274,12 +2274,57 @@
     }
 
     openInspectPanel(el, selector, meta);
+    startInspectScrollTracking();
   }
 
   function deselectInspectTarget() {
     state.inspectTarget = null;
     if (inspectSelectOutline) inspectSelectOutline.style.display = 'none';
     inspectCorners.forEach(function (c) { c.style.display = 'none'; });
+    stopInspectScrollTracking();
+  }
+
+  var inspectScrollHandler = null;
+
+  function updateInspectOverlayPositions() {
+    if (!state.inspectTarget) return;
+    var el = state.inspectTarget.element;
+    var rect = el.getBoundingClientRect();
+    var sx = rect.left + window.scrollX;
+    var sy = rect.top + window.scrollY;
+
+    inspectSelectOutline.style.left = sx + 'px';
+    inspectSelectOutline.style.top = sy + 'px';
+    inspectSelectOutline.style.width = rect.width + 'px';
+    inspectSelectOutline.style.height = rect.height + 'px';
+
+    var positions = [
+      [sx - 4, sy - 4],
+      [sx + rect.width - 4, sy - 4],
+      [sx - 4, sy + rect.height - 4],
+      [sx + rect.width - 4, sy + rect.height - 4],
+    ];
+    for (var i = 0; i < 4; i++) {
+      inspectCorners[i].style.left = positions[i][0] + 'px';
+      inspectCorners[i].style.top = positions[i][1] + 'px';
+    }
+
+    positionInspectPanel(el);
+  }
+
+  function startInspectScrollTracking() {
+    if (inspectScrollHandler) return;
+    inspectScrollHandler = updateInspectOverlayPositions;
+    window.addEventListener('scroll', inspectScrollHandler, true);
+    window.addEventListener('resize', inspectScrollHandler, false);
+  }
+
+  function stopInspectScrollTracking() {
+    if (inspectScrollHandler) {
+      window.removeEventListener('scroll', inspectScrollHandler, true);
+      window.removeEventListener('resize', inspectScrollHandler, false);
+      inspectScrollHandler = null;
+    }
   }
 
   function closeInspectPanel() {
