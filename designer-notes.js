@@ -569,6 +569,12 @@
     '.dn-inspect-row-label{color:var(--dn-text-muted);font-size:11px;white-space:nowrap;flex-shrink:0}',
     '.dn-inspect-row-label.dimmed{opacity:0.4}',
     '.dn-inspect-row-value{display:flex;align-items:center;gap:4px;min-width:0;justify-content:flex-end}',
+    '.dn-inspect-input{width:60px;height:20px;border:1px solid var(--dn-border-light);border-radius:4px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:10px;padding:0 4px;text-align:right;outline:none;transition:border-color .15s;box-sizing:border-box}',
+    '.dn-inspect-input:focus{border-color:var(--dn-brand)}',
+    '.dn-inspect-select{width:80px;height:20px;border:1px solid var(--dn-border-light);border-radius:4px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:10px;padding:0 2px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width=\'8\' height=\'5\' viewBox=\'0 0 8 5\' fill=\'none\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M1 1l3 3 3-3\' stroke=\'%2394a3b8\' stroke-width=\'1.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 4px center;padding-right:16px;box-sizing:border-box}',
+    '.dn-inspect-select:focus{border-color:var(--dn-brand)}',
+    '.dn-inspect-color-chip{width:16px;height:16px;border-radius:3px;border:1px solid var(--dn-border);cursor:pointer;flex-shrink:0;position:relative;overflow:hidden}',
+    '.dn-inspect-color-chip input{position:absolute;top:-4px;left:-4px;width:24px;height:24px;opacity:0;cursor:pointer}',
     '.dn-more-toggle{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:24px;background:var(--dn-bg);border:2px solid var(--dn-border);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:2147483640;transition:transform .15s,background .15s,border-color .15s;padding:0}',
     '.dn-more-toggle:hover{transform:scale(1.08);border-color:var(--dn-brand)}',
     '.dn-more-toggle svg{width:22px;height:22px;fill:var(--dn-text-secondary);stroke:none}',
@@ -2579,14 +2585,208 @@
     return result;
   }
 
-  // Stub — will be implemented in Task 6
   function createValueControl(prop, el) {
-    var span = document.createElement('span');
-    span.textContent = prop.value;
-    span.style.fontFamily = '"JetBrains Mono",monospace';
-    span.style.fontSize = '10px';
-    return span;
+    var wrapper = document.createElement('div');
+    wrapper.style.display = 'flex';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.gap = '4px';
+
+    if (prop.type === 'color') {
+      wrapper.appendChild(createColorControl(prop, el));
+    } else if (prop.type === 'enum') {
+      wrapper.appendChild(createEnumControl(prop, el));
+    } else if (prop.type === 'numeric') {
+      wrapper.appendChild(createNumericControl(prop, el));
+    } else {
+      wrapper.appendChild(createTextControl(prop, el));
+    }
+
+    return wrapper;
   }
+
+  function parseNumericValue(value) {
+    var match = value.match(/^(-?[\d.]+)\s*(px|rem|em|%|vh|vw|pt|ch|ex|vmin|vmax)?$/);
+    if (match) return { num: parseFloat(match[1]), unit: match[2] || '' };
+    var n = parseFloat(value);
+    if (!isNaN(n)) return { num: n, unit: '' };
+    return null;
+  }
+
+  function createNumericControl(prop, el) {
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'dn-inspect-input';
+    input.value = prop.value;
+    var originalValue = prop.value;
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        var parsed = parseNumericValue(input.value);
+        if (!parsed) return;
+        var step = e.shiftKey ? 10 : 1;
+        if (parsed.unit === '' && prop.prop === 'opacity') {
+          step = e.shiftKey ? 0.1 : 0.01;
+        } else if (parsed.unit === '' && prop.prop !== 'font-weight') {
+          step = e.shiftKey ? 1 : 0.1;
+        }
+        var dir = e.key === 'ArrowUp' ? 1 : -1;
+        var newNum = Math.round((parsed.num + step * dir) * 100) / 100;
+        input.value = newNum + parsed.unit;
+        applyInspectValue(el, prop.prop, input.value, originalValue);
+      }
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        input.value = originalValue;
+        applyInspectValue(el, prop.prop, originalValue, originalValue);
+        input.blur();
+      }
+      e.stopPropagation();
+    });
+
+    input.addEventListener('change', function () {
+      applyInspectValue(el, prop.prop, input.value, originalValue);
+    });
+
+    input.addEventListener('focus', function () { state.inspectEditingValue = true; });
+    input.addEventListener('blur', function () { state.inspectEditingValue = false; });
+
+    return input;
+  }
+
+  function createEnumControl(prop, el) {
+    var select = document.createElement('select');
+    select.className = 'dn-inspect-select';
+    var originalValue = prop.value;
+
+    var options = prop.options || [];
+    var currentInOptions = options.indexOf(prop.value) !== -1;
+    if (!currentInOptions) {
+      var opt = document.createElement('option');
+      opt.value = prop.value;
+      opt.textContent = prop.value;
+      select.appendChild(opt);
+    }
+
+    options.forEach(function (val) {
+      var opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = val;
+      if (val === prop.value) opt.selected = true;
+      select.appendChild(opt);
+    });
+
+    select.addEventListener('change', function () {
+      applyInspectValue(el, prop.prop, select.value, originalValue);
+    });
+
+    select.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        select.value = originalValue;
+        applyInspectValue(el, prop.prop, originalValue, originalValue);
+        select.blur();
+      }
+      e.stopPropagation();
+    });
+
+    select.addEventListener('focus', function () { state.inspectEditingValue = true; });
+    select.addEventListener('blur', function () { state.inspectEditingValue = false; });
+
+    return select;
+  }
+
+  function createColorControl(prop, el) {
+    var wrapper = document.createElement('div');
+    wrapper.style.display = 'flex';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.gap = '4px';
+    var originalValue = prop.value;
+
+    var chip = document.createElement('div');
+    chip.className = 'dn-inspect-color-chip';
+    chip.style.backgroundColor = prop.value;
+
+    var picker = document.createElement('input');
+    picker.type = 'color';
+    picker.value = rgbToHex(prop.value);
+    chip.appendChild(picker);
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'dn-inspect-input';
+    input.style.width = '68px';
+    input.value = rgbToHex(prop.value);
+
+    picker.addEventListener('input', function () {
+      input.value = picker.value;
+      chip.style.backgroundColor = picker.value;
+      applyInspectValue(el, prop.prop, picker.value, originalValue);
+    });
+
+    input.addEventListener('change', function () {
+      chip.style.backgroundColor = input.value;
+      try { picker.value = rgbToHex(input.value); } catch (e) {}
+      applyInspectValue(el, prop.prop, input.value, originalValue);
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        input.value = rgbToHex(originalValue);
+        chip.style.backgroundColor = originalValue;
+        applyInspectValue(el, prop.prop, originalValue, originalValue);
+        input.blur();
+      }
+      if (e.key === 'Enter') input.blur();
+      e.stopPropagation();
+    });
+
+    input.addEventListener('focus', function () { state.inspectEditingValue = true; });
+    input.addEventListener('blur', function () { state.inspectEditingValue = false; });
+
+    wrapper.appendChild(chip);
+    wrapper.appendChild(input);
+    return wrapper;
+  }
+
+  function rgbToHex(rgb) {
+    if (!rgb || rgb.charAt(0) === '#') return rgb || '#000000';
+    var match = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!match) return rgb;
+    var r = parseInt(match[1]), g = parseInt(match[2]), b = parseInt(match[3]);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+
+  function createTextControl(prop, el) {
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'dn-inspect-input';
+    input.style.width = '90px';
+    input.value = prop.value;
+    var originalValue = prop.value;
+
+    input.addEventListener('change', function () {
+      applyInspectValue(el, prop.prop, input.value, originalValue);
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') input.blur();
+      if (e.key === 'Escape') {
+        input.value = originalValue;
+        applyInspectValue(el, prop.prop, originalValue, originalValue);
+        input.blur();
+      }
+      e.stopPropagation();
+    });
+
+    input.addEventListener('focus', function () { state.inspectEditingValue = true; });
+    input.addEventListener('blur', function () { state.inspectEditingValue = false; });
+
+    return input;
+  }
+
+  // Stub — will be implemented in Task 7
+  function applyInspectValue(el, prop, newValue, computedOriginal) {}
 
   // =========================================================================
   // TEXT EDIT — DETECTION & HOVER
