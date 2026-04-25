@@ -541,6 +541,12 @@
     '.dn-text-toggle.dn-active:hover{background:var(--dn-brand-hover);border-color:var(--dn-brand-hover)}',
     '.dn-text-toggle svg{width:22px;height:22px;fill:none;stroke:var(--dn-text-secondary);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
     '.dn-text-toggle.dn-active svg{stroke:#fff}',
+    '.dn-inspect-toggle{position:fixed;bottom:24px;right:192px;width:48px;height:48px;border-radius:24px;background:var(--dn-bg);border:2px solid var(--dn-border);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:2147483640;transition:transform .15s,background .15s,border-color .15s;padding:0}',
+    '.dn-inspect-toggle svg{width:20px;height:20px;fill:none;stroke:var(--dn-text-secondary);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+    '.dn-inspect-toggle:hover{transform:scale(1.08);border-color:var(--dn-brand)}',
+    '.dn-inspect-toggle.dn-active{background:var(--dn-brand);border-color:var(--dn-brand)}',
+    '.dn-inspect-toggle.dn-active svg{stroke:#fff}',
+    'body.dn-inspect-mode *:not([data-designer-notes]):not([data-designer-notes] *){cursor:crosshair!important}',
     '.dn-more-toggle{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:24px;background:var(--dn-bg);border:2px solid var(--dn-border);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:2147483640;transition:transform .15s,background .15s,border-color .15s;padding:0}',
     '.dn-more-toggle:hover{transform:scale(1.08);border-color:var(--dn-brand)}',
     '.dn-more-toggle svg{width:22px;height:22px;fill:var(--dn-text-secondary);stroke:none}',
@@ -715,8 +721,9 @@
     // /animate: view transitions
     '.dn-view-entering{opacity:0;transform:translateX(12px)}',
     '.dn-view-leaving{opacity:0;transform:translateX(-12px);pointer-events:none}',
-    'body.dn-ui-hidden [data-designer-notes="toggle"],body.dn-ui-hidden [data-designer-notes="text-toggle"],body.dn-ui-hidden [data-designer-notes="more-toggle"],body.dn-ui-hidden [data-designer-notes="pins"],body.dn-ui-hidden [data-designer-notes="panel"],body.dn-ui-hidden [data-designer-notes="popover"],body.dn-ui-hidden [data-designer-notes="preview"]{display:none!important}',
+    'body.dn-ui-hidden [data-designer-notes="toggle"],body.dn-ui-hidden [data-designer-notes="text-toggle"],body.dn-ui-hidden [data-designer-notes="inspect-toggle"],body.dn-ui-hidden [data-designer-notes="more-toggle"],body.dn-ui-hidden [data-designer-notes="pins"],body.dn-ui-hidden [data-designer-notes="panel"],body.dn-ui-hidden [data-designer-notes="popover"],body.dn-ui-hidden [data-designer-notes="preview"]{display:none!important}',
     'body.dn-toggle-hidden [data-designer-notes="toggle"]{display:none!important}',
+    'body.dn-toggle-hidden [data-designer-notes="inspect-toggle"]{display:none!important}',
     '.dn-comment-list{flex:1;overflow-y:auto;padding:0;transition:opacity .15s ease-out,transform .15s ease-out}',
     '.dn-comment-list::-webkit-scrollbar{width:6px}',
     '.dn-comment-list::-webkit-scrollbar-thumb{background:var(--dn-border);border-radius:3px}',
@@ -1966,7 +1973,7 @@
   // INTERACTION HANDLERS
   // =========================================================================
 
-  var toggleBtn, badgeEl, textToggleBtn, moreBtn;
+  var toggleBtn, badgeEl, textToggleBtn, moreBtn, inspectBtn;
 
   function createToggle() {
     toggleBtn = document.createElement('button');
@@ -1994,6 +2001,19 @@
     });
     document.body.appendChild(textToggleBtn);
 
+    // Inspect mode toggle button
+    inspectBtn = document.createElement('button');
+    inspectBtn.className = 'dn-inspect-toggle';
+    inspectBtn.setAttribute('data-designer-notes', 'inspect-toggle');
+    inspectBtn.setAttribute('title', 'Inspect mode (I)');
+    inspectBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" data-designer-notes><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="2"/></svg>';
+    inspectBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleInspectMode();
+    });
+    document.body.appendChild(inspectBtn);
+
     // More button — opens the panel
     moreBtn = document.createElement('button');
     moreBtn.className = 'dn-more-toggle';
@@ -2012,6 +2032,14 @@
   }
 
   function toggleCritMode() {
+    // Deactivate inspect mode
+    if (state.inspectMode) {
+      state.inspectMode = false;
+      document.body.classList.remove('dn-inspect-mode');
+      inspectBtn.classList.remove('dn-active');
+      clearInspectHover();
+      closeInspectPanel();
+    }
     // Deactivate text edit mode without re-entering toggleCritMode
     if (state.textEditMode) {
       if (state.activeTextEdit) dismissTextEdit();
@@ -2027,6 +2055,14 @@
   }
 
   function toggleTextEditMode() {
+    // Deactivate inspect mode
+    if (state.inspectMode) {
+      state.inspectMode = false;
+      document.body.classList.remove('dn-inspect-mode');
+      inspectBtn.classList.remove('dn-active');
+      clearInspectHover();
+      closeInspectPanel();
+    }
     // Deactivate crit mode without re-entering toggleTextEditMode
     if (state.critMode) {
       state.critMode = false;
@@ -2046,7 +2082,38 @@
     toggleBtn.classList.toggle('dn-active', state.critMode);
     // Update dedicated text toggle button
     if (textToggleBtn) textToggleBtn.classList.toggle('dn-active', state.textEditMode);
+    if (inspectBtn) inspectBtn.classList.toggle('dn-active', state.inspectMode);
   }
+
+  function toggleInspectMode() {
+    // Deactivate comment mode
+    if (state.critMode) {
+      state.critMode = false;
+      document.body.classList.remove('dn-crit-mode');
+      toggleBtn.classList.remove('dn-active');
+      closePopover();
+    }
+    // Deactivate text edit mode
+    if (state.textEditMode) {
+      if (state.activeTextEdit) dismissTextEdit();
+      state.textEditMode = false;
+      document.body.classList.remove('dn-text-edit-mode');
+      clearTextHover();
+    }
+    state.inspectMode = !state.inspectMode;
+    document.body.classList.toggle('dn-inspect-mode', state.inspectMode);
+    inspectBtn.classList.toggle('dn-active', state.inspectMode);
+    if (!state.inspectMode) {
+      clearInspectHover();
+      closeInspectPanel();
+    }
+    updateToggleButton();
+  }
+
+  // Stub functions — will be implemented in later tasks
+  function clearInspectHover() {}
+  function closeInspectPanel() {}
+  function deselectInspectTarget() { state.inspectTarget = null; }
 
   // =========================================================================
   // TEXT EDIT — DETECTION & HOVER
@@ -2384,10 +2451,16 @@
     if (e.key === 't' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTyping()) {
       e.preventDefault(); toggleTextEditMode(); return;
     }
+    if (e.key === 'i' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTyping()) {
+      e.preventDefault(); toggleInspectMode(); return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
       e.preventDefault(); toggleCritMode(); return;
     }
     if (e.key === 'Escape') {
+      if (state.inspectMode && state.inspectEditingValue) return; // handled by input
+      if (state.inspectMode && state.inspectTarget) { closeInspectPanel(); deselectInspectTarget(); return; }
+      if (state.inspectMode) { toggleInspectMode(); return; }
       if (state.textEditMode) toggleTextEditMode();
       else if (state.editingCommentId) closePopover();
       else if (state.critMode) toggleCritMode();
