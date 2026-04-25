@@ -547,6 +547,10 @@
     '.dn-inspect-toggle.dn-active{background:var(--dn-brand);border-color:var(--dn-brand)}',
     '.dn-inspect-toggle.dn-active svg{stroke:#fff}',
     'body.dn-inspect-mode *:not([data-designer-notes]):not([data-designer-notes] *){cursor:crosshair!important}',
+    '.dn-inspect-hover-outline{position:absolute;pointer-events:none;z-index:2147483638;border:2px solid var(--dn-brand);border-radius:2px;transition:all .1s ease}',
+    '.dn-inspect-hover-label{position:absolute;pointer-events:none;z-index:2147483638;background:var(--dn-brand);color:#fff;font-size:10px;font-weight:600;font-family:"JetBrains Mono",monospace;padding:2px 6px;border-radius:3px;white-space:nowrap;line-height:1.3}',
+    '.dn-inspect-select-outline{position:absolute;pointer-events:none;z-index:2147483638;border:2px solid var(--dn-brand);border-radius:2px}',
+    '.dn-inspect-corner{position:absolute;width:8px;height:8px;background:var(--dn-brand);border-radius:50%;pointer-events:none;z-index:2147483638}',
     '.dn-more-toggle{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:24px;background:var(--dn-bg);border:2px solid var(--dn-border);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:2147483640;transition:transform .15s,background .15s,border-color .15s;padding:0}',
     '.dn-more-toggle:hover{transform:scale(1.08);border-color:var(--dn-brand)}',
     '.dn-more-toggle svg{width:22px;height:22px;fill:var(--dn-text-secondary);stroke:none}',
@@ -2110,10 +2114,156 @@
     updateToggleButton();
   }
 
-  // Stub functions — will be implemented in later tasks
-  function clearInspectHover() {}
-  function closeInspectPanel() {}
-  function deselectInspectTarget() { state.inspectTarget = null; }
+  // =========================================================================
+  // INSPECT MODE — HOVER & SELECTION
+  // =========================================================================
+
+  var inspectHoverOutline = null;
+  var inspectHoverLabel = null;
+  var inspectSelectOutline = null;
+  var inspectCorners = [];
+  var inspectPanelEl = null;
+
+  function createInspectOverlays() {
+    inspectHoverOutline = document.createElement('div');
+    inspectHoverOutline.className = 'dn-inspect-hover-outline';
+    inspectHoverOutline.setAttribute('data-designer-notes', '1');
+    inspectHoverOutline.style.display = 'none';
+    document.body.appendChild(inspectHoverOutline);
+
+    inspectHoverLabel = document.createElement('div');
+    inspectHoverLabel.className = 'dn-inspect-hover-label';
+    inspectHoverLabel.setAttribute('data-designer-notes', '1');
+    inspectHoverLabel.style.display = 'none';
+    document.body.appendChild(inspectHoverLabel);
+
+    inspectSelectOutline = document.createElement('div');
+    inspectSelectOutline.className = 'dn-inspect-select-outline';
+    inspectSelectOutline.setAttribute('data-designer-notes', '1');
+    inspectSelectOutline.style.display = 'none';
+    document.body.appendChild(inspectSelectOutline);
+
+    for (var i = 0; i < 4; i++) {
+      var corner = document.createElement('div');
+      corner.className = 'dn-inspect-corner';
+      corner.setAttribute('data-designer-notes', '1');
+      corner.style.display = 'none';
+      document.body.appendChild(corner);
+      inspectCorners.push(corner);
+    }
+  }
+
+  function isInspectExcluded(el) {
+    if (!el || el === document.body || el === document.documentElement) return true;
+    if (el.tagName === 'HEAD' || el.tagName === 'HTML' || el.tagName === 'BODY') return true;
+    if (el.hasAttribute && el.hasAttribute('data-designer-notes')) return true;
+    if (el.closest && el.closest('[data-designer-notes]')) return true;
+    return false;
+  }
+
+  function getElementLabel(el) {
+    var label = el.tagName.toLowerCase();
+    var classes = [];
+    if (el.classList) {
+      for (var i = 0; i < el.classList.length && classes.length < 2; i++) {
+        var c = el.classList[i];
+        if (!/^(ng-|css-|sc-|jsx-|_|svelte-|astro-|dn-)/.test(c)) {
+          classes.push('.' + c);
+        }
+      }
+    }
+    return label + classes.join('');
+  }
+
+  function handleInspectHover(e) {
+    if (!state.inspectMode) return;
+    var target = e.target;
+    if (isInspectExcluded(target)) {
+      clearInspectHover();
+      return;
+    }
+    var rect = target.getBoundingClientRect();
+    inspectHoverOutline.style.display = 'block';
+    inspectHoverOutline.style.left = (rect.left + window.scrollX) + 'px';
+    inspectHoverOutline.style.top = (rect.top + window.scrollY) + 'px';
+    inspectHoverOutline.style.width = rect.width + 'px';
+    inspectHoverOutline.style.height = rect.height + 'px';
+
+    inspectHoverLabel.style.display = 'block';
+    inspectHoverLabel.textContent = getElementLabel(target);
+    inspectHoverLabel.style.left = (rect.left + window.scrollX) + 'px';
+    inspectHoverLabel.style.top = (rect.top + window.scrollY - 22) + 'px';
+  }
+
+  function clearInspectHover() {
+    if (inspectHoverOutline) inspectHoverOutline.style.display = 'none';
+    if (inspectHoverLabel) inspectHoverLabel.style.display = 'none';
+  }
+
+  function handleInspectClick(e) {
+    if (!state.inspectMode) return;
+    var target = e.target;
+    if (isInspectExcluded(target)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    clearInspectHover();
+    selectInspectTarget(target);
+  }
+
+  function selectInspectTarget(el) {
+    deselectInspectTarget();
+
+    var selector = computeSelector(el);
+    var meta = getElementMeta(el);
+
+    state.inspectTarget = {
+      element: el,
+      selector: selector,
+      meta: meta,
+    };
+
+    var rect = el.getBoundingClientRect();
+    var sx = rect.left + window.scrollX;
+    var sy = rect.top + window.scrollY;
+
+    inspectSelectOutline.style.display = 'block';
+    inspectSelectOutline.style.left = sx + 'px';
+    inspectSelectOutline.style.top = sy + 'px';
+    inspectSelectOutline.style.width = rect.width + 'px';
+    inspectSelectOutline.style.height = rect.height + 'px';
+
+    var positions = [
+      [sx - 4, sy - 4],
+      [sx + rect.width - 4, sy - 4],
+      [sx - 4, sy + rect.height - 4],
+      [sx + rect.width - 4, sy + rect.height - 4],
+    ];
+    for (var i = 0; i < 4; i++) {
+      inspectCorners[i].style.display = 'block';
+      inspectCorners[i].style.left = positions[i][0] + 'px';
+      inspectCorners[i].style.top = positions[i][1] + 'px';
+    }
+
+    openInspectPanel(el, selector, meta);
+  }
+
+  function deselectInspectTarget() {
+    state.inspectTarget = null;
+    if (inspectSelectOutline) inspectSelectOutline.style.display = 'none';
+    inspectCorners.forEach(function (c) { c.style.display = 'none'; });
+  }
+
+  function closeInspectPanel() {
+    if (inspectPanelEl) {
+      inspectPanelEl.remove();
+      inspectPanelEl = null;
+    }
+  }
+
+  // Stub — will be implemented in Task 4
+  function openInspectPanel(el, selector, meta) {}
 
   // =========================================================================
   // TEXT EDIT — DETECTION & HOVER
@@ -2572,6 +2722,15 @@
     rerenderAllPins();
     rerenderAllTextIndicators();
     updateBadge();
+
+    createInspectOverlays();
+    document.addEventListener('mousemove', handleInspectHover, true);
+    document.addEventListener('click', function (e) {
+      if (!state.inspectMode) return;
+      if (e.target.closest && e.target.closest('.dn-inspect-panel')) return;
+      if (e.target.closest && e.target.closest('[data-designer-notes]')) return;
+      handleInspectClick(e);
+    }, true);
 
     document.addEventListener('click', handleCritClick, true);
     document.addEventListener('click', handleTextClick, true);
