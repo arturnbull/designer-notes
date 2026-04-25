@@ -551,6 +551,24 @@
     '.dn-inspect-hover-label{position:absolute;pointer-events:none;z-index:2147483638;background:var(--dn-brand);color:#fff;font-size:10px;font-weight:600;font-family:"JetBrains Mono",monospace;padding:2px 6px;border-radius:3px;white-space:nowrap;line-height:1.3}',
     '.dn-inspect-select-outline{position:absolute;pointer-events:none;z-index:2147483638;border:2px solid var(--dn-brand);border-radius:2px}',
     '.dn-inspect-corner{position:absolute;width:8px;height:8px;background:var(--dn-brand);border-radius:50%;pointer-events:none;z-index:2147483638}',
+    '.dn-inspect-panel{position:absolute;z-index:2147483644;width:240px;background:var(--dn-bg);border:1px solid var(--dn-border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.12),0 0 0 1px rgba(0,0,0,.04);font-family:"Outfit",sans-serif;font-size:var(--dn-font-xs);color:var(--dn-text);overflow:hidden;animation:dn-popover-in .15s ease}',
+    '.dn-inspect-panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--dn-border-light);background:var(--dn-bg-subtle)}',
+    '.dn-inspect-panel-tag{display:flex;align-items:center;gap:4px;font-family:"JetBrains Mono",monospace;font-size:11px;min-width:0;overflow:hidden}',
+    '.dn-inspect-panel-tag-name{color:var(--dn-brand);font-weight:600}',
+    '.dn-inspect-panel-tag-class{color:var(--dn-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.dn-inspect-panel-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}',
+    '.dn-inspect-panel-btn{width:24px;height:24px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dn-text-muted);font-size:14px;padding:0}',
+    '.dn-inspect-panel-btn:hover{background:var(--dn-bg-hover);color:var(--dn-text)}',
+    '.dn-inspect-section{padding:8px 10px;border-bottom:1px solid var(--dn-border-light)}',
+    '.dn-inspect-section:last-child{border-bottom:none}',
+    '.dn-inspect-section-label{font-size:9px;font-weight:700;color:var(--dn-brand);letter-spacing:0.5px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:4px;user-select:none}',
+    '.dn-inspect-section-label::before{content:"▾";font-size:8px;transition:transform .15s}',
+    '.dn-inspect-section.collapsed .dn-inspect-section-label::before{transform:rotate(-90deg)}',
+    '.dn-inspect-section.collapsed .dn-inspect-rows{display:none}',
+    '.dn-inspect-row{display:flex;align-items:center;justify-content:space-between;padding:2px 0;gap:8px}',
+    '.dn-inspect-row-label{color:var(--dn-text-muted);font-size:11px;white-space:nowrap;flex-shrink:0}',
+    '.dn-inspect-row-label.dimmed{opacity:0.4}',
+    '.dn-inspect-row-value{display:flex;align-items:center;gap:4px;min-width:0;justify-content:flex-end}',
     '.dn-more-toggle{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:24px;background:var(--dn-bg);border:2px solid var(--dn-border);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:2147483640;transition:transform .15s,background .15s,border-color .15s;padding:0}',
     '.dn-more-toggle:hover{transform:scale(1.08);border-color:var(--dn-brand)}',
     '.dn-more-toggle svg{width:22px;height:22px;fill:var(--dn-text-secondary);stroke:none}',
@@ -2263,7 +2281,118 @@
   }
 
   // Stub — will be implemented in Task 4
-  function openInspectPanel(el, selector, meta) {}
+  function openInspectPanel(el, selector, meta) {
+    closeInspectPanel();
+
+    var panel = document.createElement('div');
+    panel.className = 'dn-inspect-panel';
+    panel.setAttribute('data-designer-notes', '1');
+
+    // Header
+    var header = document.createElement('div');
+    header.className = 'dn-inspect-panel-header';
+
+    var tagInfo = document.createElement('div');
+    tagInfo.className = 'dn-inspect-panel-tag';
+    var tagName = document.createElement('span');
+    tagName.className = 'dn-inspect-panel-tag-name';
+    tagName.textContent = el.tagName.toLowerCase();
+    tagInfo.appendChild(tagName);
+
+    var classes = getElementLabel(el).split('.').slice(1);
+    if (classes.length > 0) {
+      var tagClass = document.createElement('span');
+      tagClass.className = 'dn-inspect-panel-tag-class';
+      tagClass.textContent = '.' + classes.join('.');
+      tagInfo.appendChild(tagClass);
+    }
+
+    var actions = document.createElement('div');
+    actions.className = 'dn-inspect-panel-actions';
+
+    var revertBtn = document.createElement('button');
+    revertBtn.className = 'dn-inspect-panel-btn dn-inspect-revert-btn';
+    revertBtn.title = 'Revert changes';
+    revertBtn.textContent = '↩';
+    revertBtn.style.display = 'none';
+    revertBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleRevertElement();
+    });
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'dn-inspect-panel-btn';
+    closeBtn.title = 'Close';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      closeInspectPanel();
+      deselectInspectTarget();
+    });
+
+    actions.appendChild(revertBtn);
+    actions.appendChild(closeBtn);
+    header.appendChild(tagInfo);
+    header.appendChild(actions);
+    panel.appendChild(header);
+
+    // Property sections
+    var sections = getInspectSections(el);
+    sections.forEach(function (section) {
+      panel.appendChild(buildInspectSection(section, el));
+    });
+
+    document.body.appendChild(panel);
+    inspectPanelEl = panel;
+
+    positionInspectPanel(el);
+    updateRevertButton(selector);
+  }
+
+  function positionInspectPanel(el) {
+    if (!inspectPanelEl) return;
+    var rect = el.getBoundingClientRect();
+    var panelRect = inspectPanelEl.getBoundingClientRect();
+    var scrollX = window.scrollX;
+    var scrollY = window.scrollY;
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var pad = 12;
+
+    var left = rect.right + pad + scrollX;
+    var top = rect.top + scrollY;
+
+    if (rect.right + pad + panelRect.width > vw) {
+      left = rect.left - panelRect.width - pad + scrollX;
+    }
+    if (left - scrollX < 0) {
+      left = vw - panelRect.width - pad + scrollX;
+    }
+    if (top - scrollY + panelRect.height > vh) {
+      top = vh - panelRect.height - pad + scrollY;
+    }
+    if (top - scrollY < pad) {
+      top = pad + scrollY;
+    }
+
+    inspectPanelEl.style.left = left + 'px';
+    inspectPanelEl.style.top = top + 'px';
+  }
+
+  function refreshInspectPanel() {
+    if (!state.inspectTarget || !inspectPanelEl) return;
+    var el = state.inspectTarget.element;
+    var selector = state.inspectTarget.selector;
+    var meta = state.inspectTarget.meta;
+    closeInspectPanel();
+    openInspectPanel(el, selector, meta);
+  }
+
+  // Stubs — will be implemented in Tasks 5-7
+  function getInspectSections(el) { return []; }
+  function buildInspectSection(section, el) { return document.createElement('div'); }
+  function toggleRevertElement() {}
+  function updateRevertButton(selector) {}
 
   // =========================================================================
   // TEXT EDIT — DETECTION & HOVER
