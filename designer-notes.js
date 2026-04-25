@@ -2388,11 +2388,205 @@
     openInspectPanel(el, selector, meta);
   }
 
-  // Stubs — will be implemented in Tasks 5-7
-  function getInspectSections(el) { return []; }
-  function buildInspectSection(section, el) { return document.createElement('div'); }
+  // Stubs — will be implemented in Tasks 6-7
   function toggleRevertElement() {}
   function updateRevertButton(selector) {}
+
+  // =========================================================================
+  // INSPECT MODE — PROPERTY DETECTION & SECTIONS
+  // =========================================================================
+
+  var INSPECT_PROPERTIES = {
+    spacing: {
+      label: 'SPACING',
+      properties: [
+        { prop: 'padding-top', label: 'pad-t', type: 'numeric' },
+        { prop: 'padding-right', label: 'pad-r', type: 'numeric' },
+        { prop: 'padding-bottom', label: 'pad-b', type: 'numeric' },
+        { prop: 'padding-left', label: 'pad-l', type: 'numeric' },
+        { prop: 'margin-top', label: 'mar-t', type: 'numeric' },
+        { prop: 'margin-right', label: 'mar-r', type: 'numeric' },
+        { prop: 'margin-bottom', label: 'mar-b', type: 'numeric' },
+        { prop: 'margin-left', label: 'mar-l', type: 'numeric' },
+      ],
+    },
+    typography: {
+      label: 'TYPOGRAPHY',
+      properties: [
+        { prop: 'font-family', label: 'font', type: 'text' },
+        { prop: 'font-size', label: 'size', type: 'numeric' },
+        { prop: 'font-weight', label: 'weight', type: 'enum', options: ['100','200','300','400','500','600','700','800','900'] },
+        { prop: 'line-height', label: 'line-h', type: 'numeric' },
+        { prop: 'letter-spacing', label: 'spacing', type: 'numeric' },
+        { prop: 'color', label: 'color', type: 'color' },
+      ],
+      condition: function (el) {
+        for (var i = 0; i < el.childNodes.length; i++) {
+          if (el.childNodes[i].nodeType === 3 && el.childNodes[i].textContent.trim()) return true;
+        }
+        return false;
+      },
+    },
+    layout: {
+      label: 'LAYOUT',
+      properties: [
+        { prop: 'display', label: 'display', type: 'enum', options: ['block','flex','grid','inline','inline-block','inline-flex','none'] },
+        { prop: 'width', label: 'width', type: 'numeric' },
+        { prop: 'height', label: 'height', type: 'numeric' },
+        { prop: 'gap', label: 'gap', type: 'numeric', condition: function (el, computed) { return /^(flex|grid|inline-flex|inline-grid)$/.test(computed.display); } },
+        { prop: 'flex-direction', label: 'direction', type: 'enum', options: ['row','row-reverse','column','column-reverse'], condition: function (el, computed) { return /^(flex|inline-flex)$/.test(computed.display); } },
+        { prop: 'justify-content', label: 'justify', type: 'enum', options: ['flex-start','flex-end','center','space-between','space-around','space-evenly'], condition: function (el, computed) { return /^(flex|grid|inline-flex|inline-grid)$/.test(computed.display); } },
+        { prop: 'align-items', label: 'align', type: 'enum', options: ['stretch','flex-start','flex-end','center','baseline'], condition: function (el, computed) { return /^(flex|grid|inline-flex|inline-grid)$/.test(computed.display); } },
+        { prop: 'border-radius', label: 'radius', type: 'numeric' },
+      ],
+    },
+    visual: {
+      label: 'VISUAL',
+      properties: [
+        { prop: 'background-color', label: 'bg', type: 'color' },
+        { prop: 'opacity', label: 'opacity', type: 'numeric' },
+        { prop: 'border-width', label: 'border-w', type: 'numeric', condition: function (el, computed) { return parseFloat(computed.borderTopWidth) > 0; } },
+        { prop: 'border-style', label: 'border-s', type: 'enum', options: ['none','solid','dashed','dotted','double','groove','ridge'], condition: function (el, computed) { return computed.borderTopStyle !== 'none'; } },
+        { prop: 'border-color', label: 'border-c', type: 'color', condition: function (el, computed) { return computed.borderTopStyle !== 'none'; } },
+        { prop: 'box-shadow', label: 'shadow', type: 'text', condition: function (el, computed) { return computed.boxShadow !== 'none'; } },
+      ],
+    },
+  };
+
+  var INSPECT_IMAGE_PROPS = [
+    { prop: 'object-fit', label: 'fit', type: 'enum', options: ['fill','contain','cover','none','scale-down'] },
+  ];
+
+  var INSPECT_DEFAULT_VALUES = {
+    'padding-top': '0px', 'padding-right': '0px', 'padding-bottom': '0px', 'padding-left': '0px',
+    'margin-top': '0px', 'margin-right': '0px', 'margin-bottom': '0px', 'margin-left': '0px',
+    'border-radius': '0px', 'opacity': '1',
+    'border-width': '0px', 'border-style': 'none',
+    'gap': 'normal', 'letter-spacing': 'normal',
+    'box-shadow': 'none',
+  };
+
+  function getInspectSections(el) {
+    var computed = window.getComputedStyle(el);
+    var isImage = el.tagName === 'IMG' || el.tagName === 'VIDEO' || el.tagName === 'CANVAS';
+    var sections = [];
+    var sectionKeys = ['spacing', 'typography', 'layout', 'visual'];
+
+    sectionKeys.forEach(function (key) {
+      var def = INSPECT_PROPERTIES[key];
+      if (def.condition && !def.condition(el, computed)) return;
+
+      var props = [];
+      def.properties.forEach(function (p) {
+        if (p.condition && !p.condition(el, computed)) return;
+        var value = computed.getPropertyValue(p.prop);
+        props.push({
+          prop: p.prop,
+          label: p.label,
+          type: p.type,
+          options: p.options || null,
+          value: value,
+          isDefault: INSPECT_DEFAULT_VALUES[p.prop] === value,
+        });
+      });
+
+      if (key === 'layout' && isImage) {
+        INSPECT_IMAGE_PROPS.forEach(function (p) {
+          var value = computed.getPropertyValue(p.prop);
+          props.push({
+            prop: p.prop, label: p.label, type: p.type,
+            options: p.options || null, value: value,
+            isDefault: false,
+          });
+        });
+      }
+
+      if (props.length > 0) {
+        sections.push({ label: def.label, properties: props });
+      }
+    });
+
+    return sections;
+  }
+
+  function buildInspectSection(section, el) {
+    var sectionEl = document.createElement('div');
+    sectionEl.className = 'dn-inspect-section';
+
+    var label = document.createElement('div');
+    label.className = 'dn-inspect-section-label';
+    label.textContent = section.label;
+    label.addEventListener('click', function () {
+      sectionEl.classList.toggle('collapsed');
+    });
+    sectionEl.appendChild(label);
+
+    var rows = document.createElement('div');
+    rows.className = 'dn-inspect-rows';
+
+    section.properties.forEach(function (prop) {
+      var row = document.createElement('div');
+      row.className = 'dn-inspect-row';
+
+      var rowLabel = document.createElement('span');
+      rowLabel.className = 'dn-inspect-row-label' + (prop.isDefault ? ' dimmed' : '');
+      rowLabel.textContent = prop.label;
+      row.appendChild(rowLabel);
+
+      var rowValue = document.createElement('div');
+      rowValue.className = 'dn-inspect-row-value';
+      var control = createValueControl(prop, el);
+      rowValue.appendChild(control);
+      row.appendChild(rowValue);
+      rows.appendChild(row);
+    });
+
+    sectionEl.appendChild(rows);
+    return sectionEl;
+  }
+
+  function collapseSpacingForMarkdown(changes) {
+    var result = [];
+    var sides = ['top', 'right', 'bottom', 'left'];
+
+    ['padding', 'margin'].forEach(function (prop) {
+      var sideChanges = sides.map(function (s) {
+        return changes.find(function (c) { return c.property === prop + '-' + s; });
+      });
+      var hasAny = sideChanges.some(function (c) { return c; });
+      if (!hasAny) return;
+
+      var allChanged = sideChanges.every(function (c) { return c; });
+      if (allChanged) {
+        var beforeVals = sideChanges.map(function (c) { return c.before; });
+        var afterVals = sideChanges.map(function (c) { return c.after; });
+        var allSameBefore = beforeVals.every(function (v) { return v === beforeVals[0]; });
+        var allSameAfter = afterVals.every(function (v) { return v === afterVals[0]; });
+        result.push({
+          property: prop,
+          before: allSameBefore ? beforeVals[0] : beforeVals.join(' '),
+          after: allSameAfter ? afterVals[0] : afterVals.join(' '),
+        });
+      } else {
+        sideChanges.forEach(function (c) { if (c) result.push(c); });
+      }
+    });
+
+    changes.forEach(function (c) {
+      if (!/^(padding|margin)-/.test(c.property)) result.push(c);
+    });
+
+    return result;
+  }
+
+  // Stub — will be implemented in Task 6
+  function createValueControl(prop, el) {
+    var span = document.createElement('span');
+    span.textContent = prop.value;
+    span.style.fontFamily = '"JetBrains Mono",monospace';
+    span.style.fontSize = '10px';
+    return span;
+  }
 
   // =========================================================================
   // TEXT EDIT — DETECTION & HOVER
