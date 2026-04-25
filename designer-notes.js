@@ -2326,7 +2326,7 @@
       inspectCorners[i].style.top = positions[i][1] + 'px';
     }
 
-    positionInspectPanel(el);
+    // Side panel is CSS-fixed, no repositioning needed
   }
 
   function startInspectScrollTracking() {
@@ -2407,47 +2407,22 @@
     header.appendChild(actions);
     panel.appendChild(header);
 
-    // Property sections
-    var sections = getInspectSections(el);
-    sections.forEach(function (section) {
-      panel.appendChild(buildInspectSection(section, el));
-    });
+    // Build sections
+    var computed = window.getComputedStyle(el);
+    var rect = el.getBoundingClientRect();
+
+    buildPositionSection(panel, el, rect);
+    buildSizeSection(panel, el, computed);
+    buildPaddingSection(panel, el, computed);
+    buildMarginSection(panel, el, computed);
+    buildLayoutSection(panel, el, computed);
+    buildAppearanceSection(panel, el, computed);
+    buildTypographySection(panel, el, computed);
+    buildEffectsSection(panel, el, computed);
 
     document.body.appendChild(panel);
     inspectPanelEl = panel;
-
-    positionInspectPanel(el);
     updateRevertButton(selector);
-  }
-
-  function positionInspectPanel(el) {
-    if (!inspectPanelEl) return;
-    var rect = el.getBoundingClientRect();
-    var panelRect = inspectPanelEl.getBoundingClientRect();
-    var scrollX = window.scrollX;
-    var scrollY = window.scrollY;
-    var vw = window.innerWidth;
-    var vh = window.innerHeight;
-    var pad = 12;
-
-    var left = rect.right + pad + scrollX;
-    var top = rect.top + scrollY;
-
-    if (rect.right + pad + panelRect.width > vw) {
-      left = rect.left - panelRect.width - pad + scrollX;
-    }
-    if (left - scrollX < 0) {
-      left = vw - panelRect.width - pad + scrollX;
-    }
-    if (top - scrollY + panelRect.height > vh) {
-      top = vh - panelRect.height - pad + scrollY;
-    }
-    if (top - scrollY < pad) {
-      top = pad + scrollY;
-    }
-
-    inspectPanelEl.style.left = left + 'px';
-    inspectPanelEl.style.top = top + 'px';
   }
 
   function refreshInspectPanel() {
