@@ -1,6 +1,6 @@
 {
   "name": "designer-notes",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Figma-style feedback commenting for AI-generated UI. Pin comments to HTML elements, then hand off to Claude Code, Cursor, or Codex for implementation.",
   "bin": {
     "designer-notes": "bin/cli.js"
