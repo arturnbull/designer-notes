@@ -554,12 +554,14 @@
     '.dn-inspect-toggle.dn-active{background:var(--dn-brand);border-color:var(--dn-brand)}',
     '.dn-inspect-toggle.dn-active svg{stroke:#fff}',
     'body.dn-inspect-mode *:not([data-designer-notes]):not([data-designer-notes] *){cursor:crosshair!important}',
-    '.dn-inspect-hover-outline{position:absolute;pointer-events:none;z-index:2147483638;border:2px solid var(--dn-brand);border-radius:2px;transition:all .1s ease}',
+    '.dn-inspect-hover-outline{position:absolute;pointer-events:none;z-index:2147483638;border:2px solid var(--dn-brand);border-radius:2px}',
     '.dn-inspect-hover-label{position:absolute;pointer-events:none;z-index:2147483638;background:var(--dn-brand);color:#fff;font-size:10px;font-weight:600;font-family:"JetBrains Mono",monospace;padding:2px 6px;border-radius:3px;white-space:nowrap;line-height:1.3}',
     '.dn-inspect-select-outline{position:absolute;pointer-events:none;z-index:2147483638;border:2px solid var(--dn-brand);border-radius:2px}',
     '.dn-inspect-corner{position:absolute;width:8px;height:8px;background:var(--dn-brand);border-radius:50%;pointer-events:none;z-index:2147483638}',
-    '.dn-inspect-panel{position:fixed;top:0;right:0;width:260px;height:100vh;background:var(--dn-bg);border-left:1px solid var(--dn-border);box-shadow:-4px 0 24px rgba(0,0,0,.06);font-family:"Outfit",sans-serif;font-size:var(--dn-font-xs);color:var(--dn-text);overflow-y:auto;overflow-x:hidden;z-index:2147483644;animation:dn-panel-slide-in .2s ease}',
-    '@keyframes dn-panel-slide-in{from{transform:translateX(100%)}to{transform:translateX(0)}}',
+    '.dn-inspect-panel{position:fixed;top:0;right:0;width:260px;height:100vh;background:var(--dn-bg);border-left:1px solid var(--dn-border);box-shadow:-4px 0 24px rgba(0,0,0,.06);font-family:"Outfit",sans-serif;font-size:var(--dn-font-xs);color:var(--dn-text);overflow-y:auto;overflow-x:hidden;z-index:2147483644}',
+    '.dn-inspect-panel.dn-inspect-panel-enter{animation:dn-panel-slide-in .2s cubic-bezier(0.25,1,0.5,1) forwards}',
+    '@keyframes dn-panel-slide-in{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}',
+    '@media(prefers-reduced-motion:reduce){.dn-inspect-panel.dn-inspect-panel-enter{animation:none}}',
     '.dn-inspect-panel-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--dn-border-light);background:var(--dn-bg-subtle);position:sticky;top:0;z-index:1}',
     '.dn-inspect-panel-tag{display:flex;align-items:center;gap:4px;font-family:"JetBrains Mono",monospace;font-size:11px;min-width:0;overflow:hidden}',
     '.dn-inspect-panel-tag-name{color:var(--dn-brand);font-weight:600}',
@@ -2353,10 +2355,11 @@
 
   // Stub — will be implemented in Task 4
   function openInspectPanel(el, selector, meta) {
+    var isFirstOpen = !inspectPanelEl;
     closeInspectPanel();
 
     var panel = document.createElement('div');
-    panel.className = 'dn-inspect-panel';
+    panel.className = 'dn-inspect-panel' + (isFirstOpen ? ' dn-inspect-panel-enter' : '');
     panel.setAttribute('data-designer-notes', '1');
 
     // Header
