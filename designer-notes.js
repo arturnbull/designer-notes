@@ -2527,7 +2527,7 @@
 
     section.appendChild(label);
     section.appendChild(body);
-    return { section: section, body: body };
+    return { section: section, body: body, collapse: function () { section.classList.add('collapsed'); } };
   }
 
   function createCompactInput(labelText, value, opts) {
@@ -2921,6 +2921,7 @@
     }));
 
     s.body.appendChild(layout);
+    if (values.every(function (v) { return v === '0px'; })) s.collapse();
     panel.appendChild(s.section);
   }
 
@@ -2960,6 +2961,7 @@
     }));
 
     s.body.appendChild(layout);
+    if (values.every(function (v) { return v === '0px'; })) s.collapse();
     panel.appendChild(s.section);
   }
 
@@ -3101,6 +3103,11 @@
 
     opacityRow.appendChild(opacityInput);
     s.body.appendChild(opacityRow);
+
+    var bgIsDefault = computed.backgroundColor === 'rgba(0, 0, 0, 0)' || computed.backgroundColor === 'transparent';
+    var noBorder = computed.borderTopStyle === 'none';
+    var opacityIsDefault = computed.opacity === '1';
+    if (bgIsDefault && noBorder && opacityIsDefault) s.collapse();
 
     panel.appendChild(s.section);
   }
