@@ -563,37 +563,38 @@
     '@keyframes dn-panel-slide-in{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}',
     '@media(prefers-reduced-motion:reduce){.dn-inspect-panel.dn-inspect-panel-enter{animation:none}}',
     '.dn-inspect-panel-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--dn-border-light);background:var(--dn-bg-subtle);position:sticky;top:0;z-index:1}',
-    '.dn-inspect-panel-tag{display:flex;align-items:center;gap:4px;font-family:"JetBrains Mono",monospace;font-size:11px;min-width:0;overflow:hidden}',
+    '.dn-inspect-panel-tag{display:flex;align-items:center;gap:4px;font-family:"JetBrains Mono",monospace;font-size:12px;min-width:0;overflow:hidden}',
     '.dn-inspect-panel-tag-name{color:var(--dn-brand);font-weight:600}',
     '.dn-inspect-panel-tag-class{color:var(--dn-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.dn-inspect-panel-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}',
     '.dn-inspect-panel-btn{width:24px;height:24px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dn-text-muted);font-size:14px;padding:0}',
     '.dn-inspect-panel-btn:hover{background:var(--dn-bg-hover);color:var(--dn-text)}',
     '.dn-inspect-panel-placeholder{display:flex;align-items:center;justify-content:center;height:200px;color:var(--dn-text-muted);font-size:12px;text-align:center;padding:20px}',
-    '.dn-inspect-section{padding:10px 14px;border-bottom:1px solid var(--dn-border-light)}',
+    '.dn-inspect-section{padding:12px 14px;border-bottom:1px solid var(--dn-border-light)}',
     '.dn-inspect-section:last-child{border-bottom:none}',
-    '.dn-inspect-section-label{font-size:10px;font-weight:600;color:var(--dn-text-secondary);letter-spacing:0.5px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none}',
-    '.dn-inspect-section-label .dn-inspect-css-hint{font-weight:400;color:var(--dn-text-muted);font-size:9px;letter-spacing:0}',
-    '.dn-inspect-section-label::after{content:"▾";font-size:8px;margin-left:auto;transition:transform .15s;display:inline-block}',
+    '.dn-inspect-section-label{font-size:11px;font-weight:600;color:var(--dn-text-secondary);letter-spacing:0.5px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none}',
+    '.dn-inspect-section-label .dn-inspect-css-hint{font-weight:400;color:var(--dn-text-muted);font-size:10px;letter-spacing:0}',
+    '.dn-inspect-section-label::after{content:"▾";font-size:10px;margin-left:auto;transition:transform .15s;display:inline-block}',
     '.dn-inspect-section.collapsed .dn-inspect-section-label::after{transform:rotate(-90deg)}',
     '.dn-inspect-section.collapsed .dn-inspect-section-body{display:none}',
     '.dn-inspect-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}',
-    '.dn-inspect-field{display:flex;align-items:center;gap:4px}',
-    '.dn-inspect-field-label{color:var(--dn-text-muted);font-size:10px;flex-shrink:0;min-width:0}',
-    '.dn-inspect-input{flex:1;height:22px;border:1px solid var(--dn-border-light);border-radius:4px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:10px;padding:0 6px;text-align:right;outline:none;transition:border-color .15s;box-sizing:border-box;min-width:0}',
+    '.dn-inspect-field{display:grid;grid-template-columns:32px 1fr;align-items:center;gap:6px}',
+    '.dn-inspect-field-label{color:var(--dn-text-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.dn-inspect-input{width:100%;height:26px;border:1px solid var(--dn-border-light);border-radius:5px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:11px;padding:0 6px;text-align:right;outline:none;transition:border-color .15s;box-sizing:border-box;min-width:0}',
     '.dn-inspect-input:focus{border-color:var(--dn-brand)}',
     '.dn-inspect-input.dimmed{color:var(--dn-text-muted);opacity:0.5}',
-    '.dn-inspect-select{flex:1;height:22px;border:1px solid var(--dn-border-light);border-radius:4px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:10px;padding:0 4px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width=\'8\' height=\'5\' viewBox=\'0 0 8 5\' fill=\'none\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M1 1l3 3 3-3\' stroke=\'%2394a3b8\' stroke-width=\'1.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 4px center;padding-right:16px;box-sizing:border-box;min-width:0}',
+    '.dn-inspect-select{width:100%;height:26px;border:1px solid var(--dn-border-light);border-radius:5px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:11px;padding:0 4px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width=\'8\' height=\'5\' viewBox=\'0 0 8 5\' fill=\'none\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M1 1l3 3 3-3\' stroke=\'%2394a3b8\' stroke-width=\'1.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 4px center;padding-right:16px;box-sizing:border-box;min-width:0}',
     '.dn-inspect-select:focus{border-color:var(--dn-brand)}',
-    '.dn-inspect-color-row{display:flex;align-items:center;gap:6px}',
-    '.dn-inspect-color-chip{width:22px;height:22px;border-radius:5px;border:1px solid var(--dn-border);cursor:pointer;flex-shrink:0;position:relative;overflow:hidden}',
-    '.dn-inspect-color-chip input{position:absolute;top:-4px;left:-4px;width:30px;height:30px;opacity:0;cursor:pointer}',
-    '.dn-inspect-spacing{display:flex;flex-direction:column;align-items:center;gap:3px}',
-    '.dn-inspect-spacing-row{display:flex;align-items:center;gap:3px}',
-    '.dn-inspect-spacing-input{width:40px;height:20px;border:1px solid var(--dn-border-light);border-radius:4px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:10px;padding:0 4px;text-align:center;outline:none;box-sizing:border-box}',
+    '.dn-inspect-color-row{display:grid;grid-template-columns:32px 1fr;align-items:center;gap:6px}',
+    '.dn-inspect-color-row .dn-inspect-color-chip{grid-column:1}',
+    '.dn-inspect-color-chip{width:26px;height:26px;border-radius:6px;border:1px solid var(--dn-border);cursor:pointer;flex-shrink:0;position:relative;overflow:hidden}',
+    '.dn-inspect-color-chip input{position:absolute;top:-4px;left:-4px;width:34px;height:34px;opacity:0;cursor:pointer}',
+    '.dn-inspect-spacing{display:flex;flex-direction:column;align-items:center;gap:4px}',
+    '.dn-inspect-spacing-row{display:flex;align-items:center;gap:4px}',
+    '.dn-inspect-spacing-input{width:44px;height:24px;border:1px solid var(--dn-border-light);border-radius:5px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:11px;padding:0 4px;text-align:center;outline:none;box-sizing:border-box}',
     '.dn-inspect-spacing-input:focus{border-color:var(--dn-brand)}',
     '.dn-inspect-spacing-input.dimmed{color:var(--dn-text-muted);opacity:0.5}',
-    '.dn-inspect-spacing-center{width:36px;height:24px;border-radius:3px}',
+    '.dn-inspect-spacing-center{width:40px;height:28px;border-radius:4px}',
     '.dn-inspect-spacing-center.padding-box{background:#dbeafe;border:1px solid #93c5fd}',
     '.dn-inspect-spacing-center.margin-box{background:#fef3c7;border:1px solid #fcd34d}',
     '.dn-more-toggle{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:24px;background:var(--dn-bg);border:2px solid var(--dn-border);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:2147483640;transition:transform .15s,background .15s,border-color .15s;padding:0}',
@@ -2534,7 +2535,7 @@
 
     var lbl = document.createElement('span');
     lbl.className = 'dn-inspect-field-label';
-    lbl.style.width = (opts.labelWidth || 12) + 'px';
+    // Grid column handles width; explicit width is a fallback for non-grid contexts
     lbl.textContent = labelText;
     field.appendChild(lbl);
 
@@ -2940,7 +2941,6 @@
     displayField.className = 'dn-inspect-field';
     var displayLabel = document.createElement('span');
     displayLabel.className = 'dn-inspect-field-label';
-    displayLabel.style.width = '24px';
     displayLabel.textContent = 'disp';
     displayField.appendChild(displayLabel);
     displayField.appendChild(createEnumInput(display, ['block','flex','grid','inline','inline-block','inline-flex','none'], function (val) {
@@ -2959,7 +2959,6 @@
       dirField.className = 'dn-inspect-field';
       var dirLabel = document.createElement('span');
       dirLabel.className = 'dn-inspect-field-label';
-      dirLabel.style.width = '24px';
       dirLabel.textContent = 'dir';
       dirField.appendChild(dirLabel);
       dirField.appendChild(createEnumInput(computed.flexDirection, ['row','row-reverse','column','column-reverse'], function (val) {
@@ -2972,7 +2971,6 @@
     justifyField.className = 'dn-inspect-field';
     var justifyLabel = document.createElement('span');
     justifyLabel.className = 'dn-inspect-field-label';
-    justifyLabel.style.width = '24px';
     justifyLabel.textContent = 'just';
     justifyField.appendChild(justifyLabel);
     justifyField.appendChild(createEnumInput(computed.justifyContent, ['flex-start','flex-end','center','space-between','space-around','space-evenly'], function (val) {
@@ -2984,7 +2982,6 @@
     alignField.className = 'dn-inspect-field';
     var alignLabel = document.createElement('span');
     alignLabel.className = 'dn-inspect-field-label';
-    alignLabel.style.width = '24px';
     alignLabel.textContent = 'align';
     alignField.appendChild(alignLabel);
     alignField.appendChild(createEnumInput(computed.alignItems, ['stretch','flex-start','flex-end','center','baseline'], function (val) {
@@ -3005,7 +3002,6 @@
     fillRow.className = 'dn-inspect-color-row';
     var fillLabel = document.createElement('span');
     fillLabel.className = 'dn-inspect-field-label';
-    fillLabel.style.width = '28px';
     fillLabel.textContent = 'fill';
     fillRow.appendChild(fillLabel);
     fillRow.appendChild(createColorInput(computed.backgroundColor, function (val) {
@@ -3019,19 +3015,41 @@
       strokeRow.style.marginTop = '6px';
       var strokeLabel = document.createElement('span');
       strokeLabel.className = 'dn-inspect-field-label';
-      strokeLabel.style.width = '28px';
       strokeLabel.textContent = 'stroke';
       strokeRow.appendChild(strokeLabel);
-      strokeRow.appendChild(createColorInput(computed.borderTopColor, function (val) {
+      var strokeControls = document.createElement('div');
+      strokeControls.style.display = 'flex';
+      strokeControls.style.alignItems = 'center';
+      strokeControls.style.gap = '6px';
+      strokeControls.appendChild(createColorInput(computed.borderTopColor, function (val) {
         applyInspectValue(el, 'border-color', val, computed.borderTopColor);
       }));
-      var widthField = createCompactInput('', computed.borderTopWidth, {
-        labelWidth: 0, prop: 'border-width',
-        onChange: function (val) { applyInspectValue(el, 'border-width', val, computed.borderTopWidth); },
+      var widthInp = document.createElement('input');
+      widthInp.type = 'text';
+      widthInp.className = 'dn-inspect-input';
+      widthInp.style.width = '40px';
+      widthInp.style.flexShrink = '0';
+      widthInp.value = computed.borderTopWidth;
+      var widthOrig = computed.borderTopWidth;
+      widthInp.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          var parsed = parseNumericValue(widthInp.value);
+          if (!parsed) return;
+          var step = e.shiftKey ? 10 : 1;
+          var dir = e.key === 'ArrowUp' ? 1 : -1;
+          widthInp.value = Math.max(0, parsed.num + step * dir) + parsed.unit;
+          applyInspectValue(el, 'border-width', widthInp.value, widthOrig);
+        }
+        if (e.key === 'Enter') { e.preventDefault(); widthInp.blur(); }
+        if (e.key === 'Escape') { widthInp.value = widthOrig; applyInspectValue(el, 'border-width', widthOrig, widthOrig); widthInp.blur(); }
+        e.stopPropagation();
       });
-      var widthInp = widthField.querySelector('input');
-      if (widthInp) { widthInp.style.width = '36px'; widthInp.style.flex = 'none'; }
-      strokeRow.appendChild(widthField);
+      widthInp.addEventListener('change', function () { applyInspectValue(el, 'border-width', widthInp.value, widthOrig); });
+      widthInp.addEventListener('focus', function () { state.inspectEditingValue = true; });
+      widthInp.addEventListener('blur', function () { state.inspectEditingValue = false; });
+      strokeControls.appendChild(widthInp);
+      strokeRow.appendChild(strokeControls);
       s.body.appendChild(strokeRow);
     }
 
@@ -3040,7 +3058,6 @@
     opacityRow.style.marginTop = '6px';
     var opacityLabel = document.createElement('span');
     opacityLabel.className = 'dn-inspect-field-label';
-    opacityLabel.style.width = '28px';
     opacityLabel.textContent = 'opacity';
     opacityRow.appendChild(opacityLabel);
     var opacityVal = Math.round(parseFloat(computed.opacity) * 100) + '%';
@@ -3113,7 +3130,6 @@
     weightField.className = 'dn-inspect-field';
     var weightLabel = document.createElement('span');
     weightLabel.className = 'dn-inspect-field-label';
-    weightLabel.style.width = '24px';
     weightLabel.textContent = 'wt';
     weightField.appendChild(weightLabel);
     weightField.appendChild(createEnumInput(computed.fontWeight, ['100','200','300','400','500','600','700','800','900'], function (val) {
@@ -3141,7 +3157,6 @@
     colorRow.style.marginTop = '6px';
     var colorLabel = document.createElement('span');
     colorLabel.className = 'dn-inspect-field-label';
-    colorLabel.style.width = '28px';
     colorLabel.textContent = 'color';
     colorRow.appendChild(colorLabel);
     colorRow.appendChild(createColorInput(computed.color, function (val) {
