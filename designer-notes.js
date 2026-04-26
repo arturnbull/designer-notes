@@ -572,8 +572,8 @@
     '.dn-inspect-section:last-child{border-bottom:none}',
     '.dn-inspect-section-label{font-size:10px;font-weight:600;color:var(--dn-text-secondary);letter-spacing:0.5px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none}',
     '.dn-inspect-section-label .dn-inspect-css-hint{font-weight:400;color:var(--dn-text-muted);font-size:9px;letter-spacing:0}',
-    '.dn-inspect-section-label::before{content:"▾";font-size:8px;margin-right:4px;transition:transform .15s;display:inline-block}',
-    '.dn-inspect-section.collapsed .dn-inspect-section-label::before{transform:rotate(-90deg)}',
+    '.dn-inspect-section-label::after{content:"▾";font-size:8px;margin-left:auto;transition:transform .15s;display:inline-block}',
+    '.dn-inspect-section.collapsed .dn-inspect-section-label::after{transform:rotate(-90deg)}',
     '.dn-inspect-section.collapsed .dn-inspect-section-body{display:none}',
     '.dn-inspect-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}',
     '.dn-inspect-field{display:flex;align-items:center;gap:4px}',
@@ -2848,7 +2848,7 @@
   // --- Padding Section ---
 
   function buildPaddingSection(panel, el, computed) {
-    var s = createInspectSection('PADDING', 'padding');
+    var s = createInspectSection('PADDING');
     var layout = document.createElement('div');
     layout.className = 'dn-inspect-spacing';
 
@@ -2887,7 +2887,7 @@
   // --- Margin Section ---
 
   function buildMarginSection(panel, el, computed) {
-    var s = createInspectSection('MARGIN', 'margin');
+    var s = createInspectSection('MARGIN');
     var layout = document.createElement('div');
     layout.className = 'dn-inspect-spacing';
 
