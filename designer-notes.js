@@ -574,19 +574,21 @@
     '.dn-inspect-section:last-child{border-bottom:none}',
     '.dn-inspect-section-label{font-size:11px;font-weight:600;color:var(--dn-text-secondary);letter-spacing:0.5px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none}',
     '.dn-inspect-section-label .dn-inspect-css-hint{font-weight:400;color:var(--dn-text-muted);font-size:10px;letter-spacing:0}',
-    '.dn-inspect-section-label::after{content:"▾";font-size:10px;margin-left:auto;transition:transform .15s;display:inline-block}',
-    '.dn-inspect-section.collapsed .dn-inspect-section-label::after{transform:rotate(-90deg)}',
+    '.dn-inspect-section-label::after{content:"+";font-size:13px;font-weight:400;color:var(--dn-text-muted);margin-left:auto;line-height:1}',
+    '.dn-inspect-section:not(.collapsed) .dn-inspect-section-label::after{content:"−"}',
     '.dn-inspect-section.collapsed .dn-inspect-section-body{display:none}',
     '.dn-inspect-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}',
-    '.dn-inspect-field{display:grid;grid-template-columns:32px 1fr;align-items:center;gap:6px}',
-    '.dn-inspect-field-label{color:var(--dn-text-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.dn-inspect-field{display:flex;flex-direction:column;gap:2px}',
+    '.dn-inspect-field-label{color:var(--dn-text-muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.dn-inspect-field-inline{display:grid;grid-template-columns:16px 1fr;align-items:center;gap:6px}',
+    '.dn-inspect-field-inline .dn-inspect-field-label{font-size:11px}',
     '.dn-inspect-input{width:100%;height:26px;border:1px solid var(--dn-border-light);border-radius:5px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:11px;padding:0 6px;text-align:right;outline:none;transition:border-color .15s;box-sizing:border-box;min-width:0}',
     '.dn-inspect-input:focus{border-color:var(--dn-brand)}',
     '.dn-inspect-input.dimmed{color:var(--dn-text-muted);opacity:0.5}',
     '.dn-inspect-select{width:100%;height:26px;border:1px solid var(--dn-border-light);border-radius:5px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:11px;padding:0 4px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width=\'8\' height=\'5\' viewBox=\'0 0 8 5\' fill=\'none\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M1 1l3 3 3-3\' stroke=\'%2394a3b8\' stroke-width=\'1.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 4px center;padding-right:16px;box-sizing:border-box;min-width:0}',
     '.dn-inspect-select:focus{border-color:var(--dn-brand)}',
-    '.dn-inspect-color-row{display:grid;grid-template-columns:32px 1fr;align-items:center;gap:6px}',
-    '.dn-inspect-color-row .dn-inspect-color-chip{grid-column:1}',
+    '.dn-inspect-color-row{display:flex;flex-direction:column;gap:2px}',
+    '.dn-inspect-color-controls{display:flex;align-items:center;gap:6px}',
     '.dn-inspect-color-chip{width:26px;height:26px;border-radius:6px;border:1px solid var(--dn-border);cursor:pointer;flex-shrink:0;position:relative;overflow:hidden}',
     '.dn-inspect-color-chip input{position:absolute;top:-4px;left:-4px;width:34px;height:34px;opacity:0;cursor:pointer}',
     '.dn-inspect-spacing{display:flex;flex-direction:column;align-items:center;gap:4px}',
@@ -2531,11 +2533,10 @@
   function createCompactInput(labelText, value, opts) {
     opts = opts || {};
     var field = document.createElement('div');
-    field.className = 'dn-inspect-field';
+    field.className = opts.inline ? 'dn-inspect-field-inline' : 'dn-inspect-field';
 
     var lbl = document.createElement('span');
     lbl.className = 'dn-inspect-field-label';
-    // Grid column handles width; explicit width is a fallback for non-grid contexts
     lbl.textContent = labelText;
     field.appendChild(lbl);
 
@@ -2662,12 +2663,47 @@
     return select;
   }
 
+  function createEnumField(labelText, currentValue, options, onChange) {
+    var field = document.createElement('div');
+    field.className = 'dn-inspect-field';
+    var lbl = document.createElement('span');
+    lbl.className = 'dn-inspect-field-label';
+    lbl.textContent = labelText;
+    field.appendChild(lbl);
+    if (options) {
+      field.appendChild(createEnumInput(currentValue, options, onChange));
+    } else {
+      // Numeric input for gap etc.
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'dn-inspect-input';
+      input.value = currentValue;
+      var orig = currentValue;
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          var parsed = parseNumericValue(input.value);
+          if (!parsed) return;
+          var step = e.shiftKey ? 10 : 1;
+          var dir = e.key === 'ArrowUp' ? 1 : -1;
+          input.value = Math.max(0, parsed.num + step * dir) + parsed.unit;
+          onChange(input.value);
+        }
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.value = orig; onChange(orig); input.blur(); }
+        e.stopPropagation();
+      });
+      input.addEventListener('change', function () { onChange(input.value); });
+      input.addEventListener('focus', function () { state.inspectEditingValue = true; });
+      input.addEventListener('blur', function () { state.inspectEditingValue = false; });
+      field.appendChild(input);
+    }
+    return field;
+  }
+
   function createColorInput(value, onChange) {
     var wrapper = document.createElement('div');
-    wrapper.style.display = 'flex';
-    wrapper.style.alignItems = 'center';
-    wrapper.style.gap = '6px';
-    wrapper.style.flex = '1';
+    wrapper.className = 'dn-inspect-color-controls';
     var originalValue = value;
 
     var chip = document.createElement('div');
@@ -2726,7 +2762,7 @@
     var selector = state.inspectTarget ? state.inspectTarget.selector : '';
 
     grid.appendChild(createCompactInput('X', x, {
-      labelWidth: 14,
+      inline: true,
       onChange: function (val) {
         var newX = parseInt(val, 10);
         if (isNaN(newX)) return;
@@ -2747,7 +2783,7 @@
     }));
 
     grid.appendChild(createCompactInput('Y', y, {
-      labelWidth: 14,
+      inline: true,
       onChange: function (val) {
         var newY = parseInt(val, 10);
         if (isNaN(newY)) return;
@@ -2815,11 +2851,11 @@
     grid.className = 'dn-inspect-grid';
 
     grid.appendChild(createCompactInput('W', computed.width, {
-      labelWidth: 14, prop: 'width',
+      inline: true, prop: 'width',
       onChange: function (val) { applyInspectValue(el, 'width', val, computed.width); },
     }));
     grid.appendChild(createCompactInput('H', computed.height, {
-      labelWidth: 14, prop: 'height',
+      inline: true, prop: 'height',
       onChange: function (val) { applyInspectValue(el, 'height', val, computed.height); },
     }));
 
@@ -2838,9 +2874,9 @@
       }
     }
 
-    grid2.appendChild(createCompactInput('⟳', rotDeg, { labelWidth: 14, readOnly: true }));
+    grid2.appendChild(createCompactInput('⟳', rotDeg, { inline: true, readOnly: true }));
     grid2.appendChild(createCompactInput('◼', computed.borderRadius, {
-      labelWidth: 14, prop: 'border-radius',
+      inline: true, prop: 'border-radius',
       dimmed: computed.borderRadius === '0px',
       onChange: function (val) { applyInspectValue(el, 'border-radius', val, computed.borderRadius); },
     }));
@@ -2937,54 +2973,21 @@
     var grid = document.createElement('div');
     grid.className = 'dn-inspect-grid';
 
-    var displayField = document.createElement('div');
-    displayField.className = 'dn-inspect-field';
-    var displayLabel = document.createElement('span');
-    displayLabel.className = 'dn-inspect-field-label';
-    displayLabel.textContent = 'disp';
-    displayField.appendChild(displayLabel);
-    displayField.appendChild(createEnumInput(display, ['block','flex','grid','inline','inline-block','inline-flex','none'], function (val) {
-      applyInspectValue(el, 'display', val, display);
-    }));
-    grid.appendChild(displayField);
-
-    grid.appendChild(createCompactInput('gap', computed.gap === 'normal' ? '0' : computed.gap, {
-      labelWidth: 20, prop: 'gap',
-      dimmed: computed.gap === 'normal' || computed.gap === '0px',
-      onChange: function (val) { applyInspectValue(el, 'gap', val, computed.gap); },
+    grid.appendChild(createEnumField('gap', computed.gap === 'normal' ? '0' : computed.gap, null, function (val) {
+      applyInspectValue(el, 'gap', val, computed.gap);
     }));
 
     if (/^(flex|inline-flex)$/.test(display)) {
-      var dirField = document.createElement('div');
-      dirField.className = 'dn-inspect-field';
-      var dirLabel = document.createElement('span');
-      dirLabel.className = 'dn-inspect-field-label';
-      dirLabel.textContent = 'dir';
-      dirField.appendChild(dirLabel);
-      dirField.appendChild(createEnumInput(computed.flexDirection, ['row','row-reverse','column','column-reverse'], function (val) {
+      grid.appendChild(createEnumField('direction', computed.flexDirection, ['row','row-reverse','column','column-reverse'], function (val) {
         applyInspectValue(el, 'flex-direction', val, computed.flexDirection);
       }));
-      grid.appendChild(dirField);
     }
 
-    var justifyField = document.createElement('div');
-    justifyField.className = 'dn-inspect-field';
-    var justifyLabel = document.createElement('span');
-    justifyLabel.className = 'dn-inspect-field-label';
-    justifyLabel.textContent = 'just';
-    justifyField.appendChild(justifyLabel);
-    justifyField.appendChild(createEnumInput(computed.justifyContent, ['flex-start','flex-end','center','space-between','space-around','space-evenly'], function (val) {
+    grid.appendChild(createEnumField('justify', computed.justifyContent, ['flex-start','flex-end','center','space-between','space-around','space-evenly'], function (val) {
       applyInspectValue(el, 'justify-content', val, computed.justifyContent);
     }));
-    grid.appendChild(justifyField);
 
-    var alignField = document.createElement('div');
-    alignField.className = 'dn-inspect-field';
-    var alignLabel = document.createElement('span');
-    alignLabel.className = 'dn-inspect-field-label';
-    alignLabel.textContent = 'align';
-    alignField.appendChild(alignLabel);
-    alignField.appendChild(createEnumInput(computed.alignItems, ['stretch','flex-start','flex-end','center','baseline'], function (val) {
+    grid.appendChild(createEnumField('align', computed.alignItems, ['stretch','flex-start','flex-end','center','baseline'], function (val) {
       applyInspectValue(el, 'align-items', val, computed.alignItems);
     }));
     grid.appendChild(alignField);
@@ -3114,7 +3117,7 @@
     var s = createInspectSection('TYPOGRAPHY');
 
     s.body.appendChild(createCompactInput('font', computed.fontFamily.split(',')[0].replace(/['"]/g, ''), {
-      labelWidth: 28, prop: 'font-family',
+      prop: 'font-family',
       onChange: function (val) { applyInspectValue(el, 'font-family', val, computed.fontFamily); },
     }));
 
@@ -3122,31 +3125,23 @@
     grid1.className = 'dn-inspect-grid';
     grid1.style.marginTop = '6px';
     grid1.appendChild(createCompactInput('size', computed.fontSize, {
-      labelWidth: 24, prop: 'font-size',
+      prop: 'font-size',
       onChange: function (val) { applyInspectValue(el, 'font-size', val, computed.fontSize); },
     }));
-
-    var weightField = document.createElement('div');
-    weightField.className = 'dn-inspect-field';
-    var weightLabel = document.createElement('span');
-    weightLabel.className = 'dn-inspect-field-label';
-    weightLabel.textContent = 'wt';
-    weightField.appendChild(weightLabel);
-    weightField.appendChild(createEnumInput(computed.fontWeight, ['100','200','300','400','500','600','700','800','900'], function (val) {
+    grid1.appendChild(createEnumField('weight', computed.fontWeight, ['100','200','300','400','500','600','700','800','900'], function (val) {
       applyInspectValue(el, 'font-weight', val, computed.fontWeight);
     }));
-    grid1.appendChild(weightField);
     s.body.appendChild(grid1);
 
     var grid2 = document.createElement('div');
     grid2.className = 'dn-inspect-grid';
     grid2.style.marginTop = '6px';
-    grid2.appendChild(createCompactInput('lead', computed.lineHeight, {
-      labelWidth: 28, prop: 'line-height',
+    grid2.appendChild(createCompactInput('leading', computed.lineHeight, {
+      prop: 'line-height',
       onChange: function (val) { applyInspectValue(el, 'line-height', val, computed.lineHeight); },
     }));
-    grid2.appendChild(createCompactInput('track', computed.letterSpacing, {
-      labelWidth: 28, prop: 'letter-spacing',
+    grid2.appendChild(createCompactInput('tracking', computed.letterSpacing, {
+      prop: 'letter-spacing',
       dimmed: computed.letterSpacing === 'normal',
       onChange: function (val) { applyInspectValue(el, 'letter-spacing', val, computed.letterSpacing); },
     }));
@@ -3175,7 +3170,7 @@
     var s = createInspectSection('EFFECTS', 'box-shadow');
 
     s.body.appendChild(createCompactInput('shadow', computed.boxShadow, {
-      labelWidth: 28, prop: 'box-shadow',
+      prop: 'box-shadow',
       onChange: function (val) { applyInspectValue(el, 'box-shadow', val, computed.boxShadow); },
     }));
     var inp = s.body.querySelector('.dn-inspect-input');
