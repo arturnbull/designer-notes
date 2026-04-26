@@ -577,7 +577,7 @@
     '.dn-inspect-section.collapsed .dn-inspect-section-body{display:none}',
     '.dn-inspect-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}',
     '.dn-inspect-field{display:flex;align-items:center;gap:4px}',
-    '.dn-inspect-field-label{color:var(--dn-text-muted);font-size:10px;flex-shrink:0}',
+    '.dn-inspect-field-label{color:var(--dn-text-muted);font-size:10px;flex-shrink:0;min-width:0}',
     '.dn-inspect-input{flex:1;height:22px;border:1px solid var(--dn-border-light);border-radius:4px;background:var(--dn-bg-subtle);color:var(--dn-text);font-family:"JetBrains Mono",monospace;font-size:10px;padding:0 6px;text-align:right;outline:none;transition:border-color .15s;box-sizing:border-box;min-width:0}',
     '.dn-inspect-input:focus{border-color:var(--dn-brand)}',
     '.dn-inspect-input.dimmed{color:var(--dn-text-muted);opacity:0.5}',
@@ -2531,7 +2531,7 @@
 
     var lbl = document.createElement('span');
     lbl.className = 'dn-inspect-field-label';
-    lbl.style.width = (opts.labelWidth || 14) + 'px';
+    lbl.style.width = (opts.labelWidth || 12) + 'px';
     lbl.textContent = labelText;
     field.appendChild(lbl);
 
@@ -2937,7 +2937,8 @@
     displayField.className = 'dn-inspect-field';
     var displayLabel = document.createElement('span');
     displayLabel.className = 'dn-inspect-field-label';
-    displayLabel.textContent = 'display';
+    displayLabel.style.width = '24px';
+    displayLabel.textContent = 'disp';
     displayField.appendChild(displayLabel);
     displayField.appendChild(createEnumInput(display, ['block','flex','grid','inline','inline-block','inline-flex','none'], function (val) {
       applyInspectValue(el, 'display', val, display);
@@ -2945,7 +2946,7 @@
     grid.appendChild(displayField);
 
     grid.appendChild(createCompactInput('gap', computed.gap === 'normal' ? '0' : computed.gap, {
-      labelWidth: 24, prop: 'gap',
+      labelWidth: 20, prop: 'gap',
       dimmed: computed.gap === 'normal' || computed.gap === '0px',
       onChange: function (val) { applyInspectValue(el, 'gap', val, computed.gap); },
     }));
@@ -2955,7 +2956,8 @@
       dirField.className = 'dn-inspect-field';
       var dirLabel = document.createElement('span');
       dirLabel.className = 'dn-inspect-field-label';
-      dirLabel.textContent = 'direction';
+      dirLabel.style.width = '24px';
+      dirLabel.textContent = 'dir';
       dirField.appendChild(dirLabel);
       dirField.appendChild(createEnumInput(computed.flexDirection, ['row','row-reverse','column','column-reverse'], function (val) {
         applyInspectValue(el, 'flex-direction', val, computed.flexDirection);
@@ -2967,7 +2969,8 @@
     justifyField.className = 'dn-inspect-field';
     var justifyLabel = document.createElement('span');
     justifyLabel.className = 'dn-inspect-field-label';
-    justifyLabel.textContent = 'justify';
+    justifyLabel.style.width = '24px';
+    justifyLabel.textContent = 'just';
     justifyField.appendChild(justifyLabel);
     justifyField.appendChild(createEnumInput(computed.justifyContent, ['flex-start','flex-end','center','space-between','space-around','space-evenly'], function (val) {
       applyInspectValue(el, 'justify-content', val, computed.justifyContent);
@@ -2978,6 +2981,7 @@
     alignField.className = 'dn-inspect-field';
     var alignLabel = document.createElement('span');
     alignLabel.className = 'dn-inspect-field-label';
+    alignLabel.style.width = '24px';
     alignLabel.textContent = 'align';
     alignField.appendChild(alignLabel);
     alignField.appendChild(createEnumInput(computed.alignItems, ['stretch','flex-start','flex-end','center','baseline'], function (val) {
@@ -2998,7 +3002,7 @@
     fillRow.className = 'dn-inspect-color-row';
     var fillLabel = document.createElement('span');
     fillLabel.className = 'dn-inspect-field-label';
-    fillLabel.style.width = '36px';
+    fillLabel.style.width = '28px';
     fillLabel.textContent = 'fill';
     fillRow.appendChild(fillLabel);
     fillRow.appendChild(createColorInput(computed.backgroundColor, function (val) {
@@ -3012,7 +3016,7 @@
       strokeRow.style.marginTop = '6px';
       var strokeLabel = document.createElement('span');
       strokeLabel.className = 'dn-inspect-field-label';
-      strokeLabel.style.width = '36px';
+      strokeLabel.style.width = '28px';
       strokeLabel.textContent = 'stroke';
       strokeRow.appendChild(strokeLabel);
       strokeRow.appendChild(createColorInput(computed.borderTopColor, function (val) {
@@ -3033,7 +3037,7 @@
     opacityRow.style.marginTop = '6px';
     var opacityLabel = document.createElement('span');
     opacityLabel.className = 'dn-inspect-field-label';
-    opacityLabel.style.width = '36px';
+    opacityLabel.style.width = '28px';
     opacityLabel.textContent = 'opacity';
     opacityRow.appendChild(opacityLabel);
     var opacityVal = Math.round(parseFloat(computed.opacity) * 100) + '%';
@@ -3090,7 +3094,7 @@
     var s = createInspectSection('TYPOGRAPHY');
 
     s.body.appendChild(createCompactInput('font', computed.fontFamily.split(',')[0].replace(/['"]/g, ''), {
-      labelWidth: 36, prop: 'font-family',
+      labelWidth: 28, prop: 'font-family',
       onChange: function (val) { applyInspectValue(el, 'font-family', val, computed.fontFamily); },
     }));
 
@@ -3098,7 +3102,7 @@
     grid1.className = 'dn-inspect-grid';
     grid1.style.marginTop = '6px';
     grid1.appendChild(createCompactInput('size', computed.fontSize, {
-      labelWidth: 36, prop: 'font-size',
+      labelWidth: 24, prop: 'font-size',
       onChange: function (val) { applyInspectValue(el, 'font-size', val, computed.fontSize); },
     }));
 
@@ -3106,8 +3110,8 @@
     weightField.className = 'dn-inspect-field';
     var weightLabel = document.createElement('span');
     weightLabel.className = 'dn-inspect-field-label';
-    weightLabel.style.width = '36px';
-    weightLabel.textContent = 'weight';
+    weightLabel.style.width = '24px';
+    weightLabel.textContent = 'wt';
     weightField.appendChild(weightLabel);
     weightField.appendChild(createEnumInput(computed.fontWeight, ['100','200','300','400','500','600','700','800','900'], function (val) {
       applyInspectValue(el, 'font-weight', val, computed.fontWeight);
@@ -3118,12 +3122,12 @@
     var grid2 = document.createElement('div');
     grid2.className = 'dn-inspect-grid';
     grid2.style.marginTop = '6px';
-    grid2.appendChild(createCompactInput('line-h', computed.lineHeight, {
-      labelWidth: 36, prop: 'line-height',
+    grid2.appendChild(createCompactInput('lead', computed.lineHeight, {
+      labelWidth: 28, prop: 'line-height',
       onChange: function (val) { applyInspectValue(el, 'line-height', val, computed.lineHeight); },
     }));
-    grid2.appendChild(createCompactInput('spacing', computed.letterSpacing, {
-      labelWidth: 36, prop: 'letter-spacing',
+    grid2.appendChild(createCompactInput('track', computed.letterSpacing, {
+      labelWidth: 28, prop: 'letter-spacing',
       dimmed: computed.letterSpacing === 'normal',
       onChange: function (val) { applyInspectValue(el, 'letter-spacing', val, computed.letterSpacing); },
     }));
@@ -3134,7 +3138,7 @@
     colorRow.style.marginTop = '6px';
     var colorLabel = document.createElement('span');
     colorLabel.className = 'dn-inspect-field-label';
-    colorLabel.style.width = '36px';
+    colorLabel.style.width = '28px';
     colorLabel.textContent = 'color';
     colorRow.appendChild(colorLabel);
     colorRow.appendChild(createColorInput(computed.color, function (val) {
@@ -3153,7 +3157,7 @@
     var s = createInspectSection('EFFECTS', 'box-shadow');
 
     s.body.appendChild(createCompactInput('shadow', computed.boxShadow, {
-      labelWidth: 40, prop: 'box-shadow',
+      labelWidth: 28, prop: 'box-shadow',
       onChange: function (val) { applyInspectValue(el, 'box-shadow', val, computed.boxShadow); },
     }));
     var inp = s.body.querySelector('.dn-inspect-input');
