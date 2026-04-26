@@ -3118,7 +3118,7 @@
     }
     if (!hasText) return;
 
-    var s = createInspectSection('TYPOGRAPHY');
+    var s = createInspectSection('TYPE');
 
     s.body.appendChild(createCompactInput('font', computed.fontFamily.split(',')[0].replace(/['"]/g, ''), {
       prop: 'font-family',
